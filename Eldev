@@ -1,0 +1,9 @@
+;; Eldev file for shape-artist -*- lexical-binding: t -*-
+
+(eldev-use-package-archive 'gnu-elpa)
+(eldev-use-package-archive 'nongnu-elpa)
+(eldev-use-package-archive 'melpa)
+
+(eldev-add-extra-dependencies 'test 'evil)
+
+(eldev-add-loading-roots 'test "tests")

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        emacs-version:
+          - '27.1'
+          - '28.1'
+          - '29.1'
+          - 'snapshot'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: ${{ matrix.emacs-version }}
+
+      - uses: emacs-eldev/setup-eldev@v1
+
+      - name: Run tests
+        run: eldev test
+
+      - name: Lint
+        run: eldev lint

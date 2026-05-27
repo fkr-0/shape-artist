@@ -1,0 +1,225 @@
+#+title: Shape Artist User Manual
+#+subtitle: Rapid ASCII Diagram Prototyping for Emacs
+#+author: Shape Artist Contributors
+#+options: toc:2 num:t
+
+* Copying
+:PROPERTIES:
+:COPYING: t
+:END:
+
+This manual is for Shape Artist version 0.1.0.
+
+Copyright \copy 2024 Shape Artist Contributors
+
+Permission is granted to copy, distribute and/or modify this document
+under the terms of the GNU Free Documentation License, Version 1.3
+or any later version published by the Free Software Foundation.
+
+* Introduction
+
+Shape Artist is an Emacs package for rapid ASCII diagram prototyping.
+It provides auto-discovered shape detection, fuzzy selection, and
+shape manipulation, layered on top of =picture-mode=.
+
+Shape Artist integrates with Evil (Vim emulation) when available,
+providing custom states for drawing, selection, and shape editing.
+It works without Evil as well, using standard Emacs keybindings.
+
+** Features
+
+- *DRAW mode*: Move with =h= / =j= / =k= / =l=, drawing lines and
+  rectangles as you go.
+- *Shape detection*: Automatically detects rectangles, edges, and
+  labels from your ASCII art.
+- *SELECT mode*: Cycle through detected shapes with =n= / =p= and
+  lock in for editing.
+- *SHAPE-EDIT mode*: Edit labels, move, or resize locked-in shapes.
+- *Normalization*: Trim blank rows/columns, add padding, and
+  optionally box with a title.
+- *Sidebar UI*: Persistent sidebar showing state, shapes, labels,
+  and context-sensitive keybindings.
+- *Outline buffer*: Tree view of the detected shape hierarchy.
+
+* Installation
+
+** With Eldev (recommended)
+
+Clone the repository and run:
+
+#+begin_example
+eldev test
+#+end_example
+
+** Manual
+
+Add the package directory to your =load-path= and require:
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/shape-artist")
+(require 'shape-artist)
+#+end_src
+
+** Package manager
+
+Shape Artist can be installed via =package-install= from MELPA
+(once published).
+
+* Quick Start
+
+1. Run =M-x shape-artist-scratch= to open a new artist buffer.
+2. Press =d= to enter DRAW mode.
+3. Use =h= / =j= / =k= / =l= to draw lines.
+4. Press =SPC= to set an anchor, then move to draw a rectangle.
+5. Press =RET= to commit the shape and return to MOVE mode.
+6. Press =C-n= to enter SELECT mode and cycle through detected shapes.
+
+* Modes
+
+** MOVE mode
+
+The default mode.  Navigate the canvas with vim-style keys.
+
+| Key     | Command                          |
+|---------+----------------------------------|
+| =h=     | Move left                        |
+| =j=     | Move down                        |
+| =k=     | Move up                          |
+| =l=     | Move right                       |
+| =SPC=   | Enter DRAW mode and set anchor   |
+| =RET=   | Commit previewed shape           |
+| =d=     | Enter DRAW mode (no anchor)      |
+| =C-n=   | Enter SELECT mode                |
+| =u=     | Toggle sidebar                   |
+| =a=     | Show sidebar                     |
+| =q=     | Quit artist mode                 |
+
+** DRAW mode
+
+Draw lines and rectangles.  The cursor leaves a trail of draw
+characters (=|= for vertical, =-= for horizontal, =+= for diagonal).
+
+| Key         | Command                        |
+|-------------+--------------------------------|
+| =h/j/k/l=   | Draw in direction              |
+| =SPC=       | Set anchor point               |
+| =RET=       | Commit shape and exit to MOVE  |
+| =C-RET=     | Commit shape and stay in DRAW  |
+| =ESC=       | Cancel and exit to MOVE        |
+| =p=         | Pick drawing character          |
+| =u=         | Undo last change               |
+
+** SELECT mode
+
+Cycle through detected shapes.
+
+| Key     | Command                       |
+|---------+-------------------------------|
+| =n=     | Next shape                    |
+| =p=     | Previous shape                |
+| =g=     | Re-parse buffer               |
+| =RET=   | Lock in shape (enter EDIT)    |
+| =ESC=   | Cancel and return to MOVE     |
+| =u=     | Toggle sidebar                |
+
+** SHAPE-EDIT mode
+
+Edit the locked-in shape.
+
+| Key       | Command                        |
+|-----------+--------------------------------|
+| =e=       | Edit label                     |
+| =m=       | Move shape                     |
+| =r=       | Resize shape                   |
+| =x=       | Replace shape type             |
+| =h/j/k/l= | Navigate interior              |
+| =ESC=     | Exit to MOVE                   |
+| =u=       | Toggle sidebar                 |
+
+* Normalization
+
+=M-x shape-artist-normalize= trims blank rows and columns, adds
+configurable padding, and optionally draws a box with a title in
+the top border.
+
+The default padding is =(1 1 1 1)= (top, right, bottom, left) and
+can be customized via =shape-artist-default-padding=.
+
+* Customization
+
+** User options
+
+- =shape-artist-default-padding=: Default padding for normalization.
+  Type: =(list integer integer integer integer)=.
+
+** Faces
+
+- =shape-artist-preview-face=: Face for shape preview overlays.
+  Default: yellow background (#ffff66).
+
+* Evil Integration
+
+When Evil is loaded, Shape Artist defines custom Evil states:
+
+- =artist= (DRAW mode): suppresses normal-state keys
+- =select= (SELECT mode): suppresses normal-state keys
+- =shape-edit= (SHAPE-EDIT mode): suppresses normal-state keys
+
+MOVE mode uses Evil's =normal= state with overridden keybindings.
+
+Evil state definitions and keymaps are loaded via
+=with-eval-after-load= so the package works without Evil installed.
+
+* Outline Buffer
+
+=M-x artist-diagram-outline-show= opens a tree-view of the
+detected shape hierarchy.  Press =RET= on a node to jump to its
+position in the artist buffer.
+
+* Internals
+
+** Module structure
+
+- =shape-artist.el=: Top-level entry point.
+- =shape-artist-core.el=: Grid helpers, movement, anchor, preview,
+  commit, mode lifecycle.
+- =shape-artist-ui.el=: Sidebar UI.
+- =shape-artist-keys.el=: Keybindings for all modes.
+- =shape-artist-select.el=: SELECT mode.
+- =shape-artist-shape-edit.el=: SHAPE-EDIT mode.
+- =shape-artist-shapes.el=: Shape parsing integration, label
+  editing, move/resize.
+- =shape-artist-diagram-parse.el=: EIEIO classes, detection,
+  hierarchy.
+- =shape-artist-diagram-outline.el=: Outline buffer.
+
+** Shape model
+
+Shapes are represented as EIEIO objects:
+
+- =artist-diagram-node=: Abstract base (x, y, width, height, children).
+- =artist-diagram-rectangle=: A rectangle.
+- =artist-diagram-edge=: A line with classification (connected,
+  disconnected, free).
+- =artist-diagram-label=: Text inside a rectangle.
+- =artist-diagram-root=: Virtual root of the shape tree.
+
+* Concept Index
+:PROPERTIES:
+:INDEX: cp
+:END:
+
+* Function Index
+:PROPERTIES:
+:INDEX: fn
+:END:
+
+* Variable Index
+:PROPERTIES:
+:INDEX: vr
+:END:
+
+* Key Index
+:PROPERTIES:
+:INDEX: ky
+:END:

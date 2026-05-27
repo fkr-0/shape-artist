@@ -1,0 +1,76 @@
+#+title: Shape Artist
+#+subtitle: Rapid ASCII Diagram Prototyping for Emacs
+
+* Overview
+
+Shape Artist is an Emacs package for creating ASCII diagrams quickly.
+It provides vim-style navigation with automatic shape detection,
+making it easy to draw boxes, lines, and labels in plain text.
+
+** Highlights
+
+- Draw with =h/j/k/l= keys, like Vim
+- Automatic rectangle and edge detection
+- Shape selection and editing (labels, move, resize)
+- Normalization: trim, pad, and box with title
+- Evil integration with custom states
+- Sidebar UI with live shape information
+
+* Installation
+
+** Requirements
+
+- Emacs 27.1+
+- Evil (optional, for Vim-style states)
+
+** From source
+
+#+begin_example
+git clone https://github.com/example/shape-artist.git
+cd shape-artist
+eldev test
+#+end_src
+
+Add to your init file:
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/shape-artist")
+(require 'shape-artist)
+#+end_src
+
+* Usage
+
+=M-x shape-artist-scratch= opens a new artist buffer with the
+sidebar.  From there:
+
+1. =d= enters DRAW mode
+2. =h/j/k/l= draws lines
+3. =SPC= sets an anchor, then move to define a rectangle
+4. =RET= commits the shape
+5. =C-n= enters SELECT mode to pick a shape
+6. =RET= in SELECT locks the shape for editing
+
+See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
+
+* Development
+
+** Running tests
+
+#+begin_example
+eldev test
+#+end_example
+
+** Linting
+
+#+begin_example
+eldev lint
+#+end_example
+
+** CI
+
+Tests run on Emacs 27.1, 28.1, 29.1, and snapshot via GitHub
+Actions.  See =.github/workflows/test.yml=.
+
+* License
+
+GPL-3.0-or-later

@@ -1,0 +1,14 @@
+.DS_Store
+.idea
+*.log
+tmp/
+
+# emacs lisp
+*.elc
+*.el~
+*.eln
+*.elc~
+
+*.md
+
+.eldev/
