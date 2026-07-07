@@ -10,14 +10,29 @@
 
 (require 'ert)
 (require 'test-helper)
-(require 'artist-diagram-parse)
+(require 'shape-artist-diagram-parse)
 (require 'shape-artist-core)
 
 ;; Load test files
-(load (expand-file-name "test-artist-diagram-parse.el"
+(load (expand-file-name "test-shape-artist-diagram-parse.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-core.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-shapes.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-select.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-shape-edit.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-ui.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-diagram-outline.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
 

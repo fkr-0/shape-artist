@@ -1,5 +1,12 @@
 ;;; shape-artist-shape-edit.el --- SHAPE-EDIT evil state: move/resize/label -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
+;;; This module implements the SHAPE-EDIT mode, allowing users to
+;;; move, resize, replace, or label a locked-in shape.
+
+;;; Code:
+
 (require 'cl-lib)
 (require 'shape-artist-core)
 (require 'shape-artist-shapes)
@@ -30,7 +37,7 @@
 ;;; --- Move Shape (stub) ---
 
 (defun shape-artist-shape-move ()
-  "Move the locked-in shape. Stub."
+  "Move the locked-in shape.  Stub."
   (interactive)
   (when shape-artist--locked-shape
     (let ((dx (read-number "dx: " 0))
@@ -40,7 +47,7 @@
 ;;; --- Resize Shape (stub) ---
 
 (defun shape-artist-shape-resize ()
-  "Resize the locked-in shape. Stub."
+  "Resize the locked-in shape.  Stub."
   (interactive)
   (when shape-artist--locked-shape
     (let ((w (read-number "New width: "))
@@ -50,7 +57,7 @@
 ;;; --- Replace Shape Type (stub) ---
 
 (defun shape-artist-shape-replace ()
-  "Replace the locked-in shape type. Stub."
+  "Replace the locked-in shape type.  Stub."
   (interactive)
   (when shape-artist--locked-shape
     (shape-artist-shapes-replace shape-artist--locked-shape 'diamond)))

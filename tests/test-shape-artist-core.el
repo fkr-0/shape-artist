@@ -436,4 +436,116 @@
           (should (= (- (line-end-position) (line-beginning-position)) max-len))
           (forward-line 1))))))
 
+;;; --- Draw Char Direction Tests ---
+
+(ert-deftest test-artist-core-draw-char-horizontal ()
+  "Horizontal movement produces '-'."
+  (should (eq (shape-artist--draw-char-for-direction 0 1) ?-))
+  (should (eq (shape-artist--draw-char-for-direction 0 -1) ?-)))
+
+(ert-deftest test-artist-core-draw-char-vertical ()
+  "Vertical movement produces '|'."
+  (should (eq (shape-artist--draw-char-for-direction 1 0) ?|))
+  (should (eq (shape-artist--draw-char-for-direction -1 0) ?|)))
+
+(ert-deftest test-artist-core-draw-char-diagonal ()
+  "Diagonal movement produces '+'."
+  (should (eq (shape-artist--draw-char-for-direction 1 1) ?+))
+  (should (eq (shape-artist--draw-char-for-direction -1 -1) ?+)))
+
+;;; --- Get/Set Lines Roundtrip ---
+
+(ert-deftest test-artist-core-get-set-lines-roundtrip ()
+  "Get-lines and set-lines are inverse operations."
+  (test-artist-with-buffer
+      "abc\ndef\nghi"
+    (let ((lines (shape-artist--get-lines)))
+      (should (equal lines '("abc" "def" "ghi")))
+      ;; Replace with different content
+      (shape-artist--set-lines '("xyz" "uvw"))
+      (should (equal (shape-artist--get-lines) '("xyz" "uvw"))))))
+
+(ert-deftest test-artist-core-get-lines-empty ()
+  "Get-lines on empty buffer returns empty list."
+  (test-artist-with-buffer
+      ""
+    (should (null (shape-artist--get-lines)))))
+
+;;; --- Add Padding Tests ---
+
+(ert-deftest test-artist-core-add-padding-top ()
+  "Adding top padding inserts blank lines at the start."
+  (test-artist-with-buffer
+      "abc"
+    (shape-artist--add-padding 2 0 0 0)
+    (let ((lines (shape-artist--get-lines)))
+      (should (= (length lines) 3))
+      (should (string-match-p "^[[:space:]]*$" (nth 0 lines)))
+      (should (string-match-p "^[[:space:]]*$" (nth 1 lines))))))
+
+(ert-deftest test-artist-core-add-padding-left ()
+  "Adding left padding prepends spaces to every line."
+  (test-artist-with-buffer
+      "abc\ndef"
+    (shape-artist--add-padding 0 0 0 3)
+    (let ((lines (shape-artist--get-lines)))
+      (should (string-prefix-p "   abc" (nth 0 lines)))
+      (should (string-prefix-p "   def" (nth 1 lines))))))
+
+(ert-deftest test-artist-core-add-padding-bottom ()
+  "Adding bottom padding appends blank lines."
+  (test-artist-with-buffer
+      "abc"
+    (shape-artist--add-padding 0 0 2 0)
+    (should (= (shape-artist--line-count) 3))))
+
+;;; --- Box with Title Edge Cases ---
+
+(ert-deftest test-artist-core-box-with-title-short ()
+  "Box with short title pads top border with dashes."
+  (test-artist-with-buffer
+      "hello world"
+    (shape-artist--box-with-title "T")
+    (let ((lines (shape-artist--get-lines)))
+      (should (string-match-p "^\\+-T-" (nth 0 lines))))))
+
+(ert-deftest test-artist-core-box-with-title-content-width ()
+  "After boxing, all lines have equal length."
+  (test-artist-with-buffer
+      "abc\nde\nf"
+    (shape-artist--box-with-title "X")
+    (let* ((lines (shape-artist--get-lines))
+           (len (length (car lines))))
+      (dolist (line lines)
+        (should (= (length line) len))))))
+
+;;; --- Shrink Edge Cases ---
+
+(ert-deftest test-artist-core-shrink-already-tight ()
+  "Shrink on content with no surrounding blanks is a no-op."
+  (test-artist-with-buffer
+      "abc\ndef"
+    (shape-artist--shrink)
+    (let ((lines (shape-artist--get-lines)))
+      (should (equal lines '("abc" "def"))))))
+
+(ert-deftest test-artist-core-shrink-blank-only ()
+  "Shrink on all-blank buffer yields empty result."
+  (test-artist-with-buffer
+      "   \n   \n   "
+    (shape-artist--shrink)
+    (should (= (shape-artist--line-count) 0))))
+
+;;; --- Place Draw Char ---
+
+(ert-deftest test-artist-core-place-draw-char ()
+  "place-draw-char overwrites the character at the given position."
+  (test-artist-with-buffer
+      "     \n     "
+    (shape-artist--place-draw-char 0 2 0 1)
+    (save-excursion
+      (goto-char (point-min))
+      (move-to-column 2)
+      (should (eq (char-after) ?-)))))
+
 ;;; test-shape-artist-core.el ends here

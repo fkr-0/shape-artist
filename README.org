@@ -29,7 +29,7 @@ making it easy to draw boxes, lines, and labels in plain text.
 git clone https://github.com/example/shape-artist.git
 cd shape-artist
 eldev test
-#+end_src
+#+end_example
 
 Add to your init file:
 

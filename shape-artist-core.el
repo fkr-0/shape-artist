@@ -1,5 +1,13 @@
 ;;; shape-artist-core.el --- Core grid helpers, movement, anchor, preview, commit, draw mode -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
+;;; This module provides core functionality for ASCII diagram editing,
+;;; including grid helpers, canvas expansion, movement commands,
+;;; drawing with preview, and shape commit operations.
+
+;;; Code:
+
 (require 'cl-lib)
 (require 'picture)
 (require 'artist)
@@ -17,36 +25,52 @@
 (declare-function evil-define-state "evil")
 (declare-function evil-normal-state "evil")
 (declare-function evil-change-state "evil")
+(declare-function shape-artist-select-start "shape-artist-select")
+(declare-function shape-artist-ui-toggle "shape-artist-ui")
 
 ;;; --- Evil State Definitions ---
 
-(with-eval-after-load 'evil
-  (evil-define-state artist
-    "Artist draw state."
-    :tag " <ART-DRAW> "
-    :cursor (hbar . 4)
-    :suppress-keymap t
-    :message "-- ARTIST DRAW --"
-    :entry-hook nil
-    :exit-hook nil)
+(defvar shape-artist--evil-states-initialized nil
+  "Non-nil once custom Evil states for shape-artist are defined.")
 
-  (evil-define-state select
-    "Artist select state."
-    :tag " <ART-SELECT> "
-    :cursor (hollow . 4)
-    :suppress-keymap t
-    :message "-- ARTIST SELECT --"
-    :entry-hook nil
-    :exit-hook nil)
+(defun shape-artist--maybe-define-evil-states ()
+  "Define custom Evil states once when Evil is available.
 
-  (evil-define-state shape-edit
-    "Artist shape-edit state."
-    :tag " <ART-EDIT> "
-    :cursor (box . 4)
-    :suppress-keymap t
-    :message "-- ARTIST SHAPE-EDIT --"
-    :entry-hook nil
-    :exit-hook nil))
+`evil-define-state' is a macro.  Keep the forms behind `eval' so this
+package still byte-compiles cleanly when Evil is not loaded during build."
+  (when (and (not shape-artist--evil-states-initialized)
+             (fboundp 'evil-define-state))
+    (eval
+     '(evil-define-state artist
+        "Artist draw state."
+        :tag " <ART-DRAW> "
+        :cursor (hbar . 4)
+        :suppress-keymap t
+        :message "-- ARTIST DRAW --"
+        :entry-hook nil
+        :exit-hook nil))
+
+    (eval
+     '(evil-define-state select
+        "Artist select state."
+        :tag " <ART-SELECT> "
+        :cursor (hollow . 4)
+        :suppress-keymap t
+        :message "-- ARTIST SELECT --"
+        :entry-hook nil
+        :exit-hook nil))
+
+    (eval
+     '(evil-define-state shape-edit
+        "Artist shape-edit state."
+        :tag " <ART-EDIT> "
+        :cursor (box . 4)
+        :suppress-keymap t
+        :message "-- ARTIST SHAPE-EDIT --"
+        :entry-hook nil
+        :exit-hook nil))
+
+    (setq shape-artist--evil-states-initialized t)))
 
 ;;; --- Variables ---
 
@@ -88,11 +112,15 @@
 (defvar-local shape-artist--mode-line-segment ""
   "Mode-line segment string.")
 
+(defconst shape-artist--mode-line-form
+  '(:eval (shape-artist--mode-line-segment-fn))
+  "Mode-line form appended while `shape-artist-core-mode' is active.")
+
 ;;; --- Grid Helpers ---
 
 (defun shape-artist--line-count ()
   "Return the number of lines in the current buffer."
-  (if (and (= (point-min) (point-max)))
+  (if (= (point-min) (point-max))
       0
     (count-lines (point-min) (point-max))))
 
@@ -490,7 +518,7 @@
   "Normalize the diagram: trim, pad, and optionally box with TITLE.
 
 PADDING is a list (TOP RIGHT BOTTOM LEFT) or nil for defaults.
-TITLE is a string or nil."
+TITLE is a string or nil.  When nil, skip the box."
   (interactive
    (let* ((pad-str (read-string "Padding (top right bottom left): " "1 1 1 1"))
           (pad (mapcar #'string-to-number (split-string pad-str)))
@@ -529,8 +557,9 @@ TITLE is a string or nil."
         (when (< min-col most-positive-fixnum)
           (setq lines (mapcar (lambda (line)
                                 (substring line min-col (1+ max-col)))
-                              lines))))
-      (shape-artist--set-lines lines))))
+                              lines)))))
+    ;; Always write back — clears buffer when all lines were blank.
+    (shape-artist--set-lines lines)))
 
 (defun shape-artist--line-blank-p (line)
   "Return t if LINE is all spaces."
@@ -560,20 +589,20 @@ TITLE is a string or nil."
 (defun shape-artist--add-padding (top right bottom left)
   "Add padding: TOP lines, RIGHT cols, BOTTOM lines, LEFT cols."
   (let* ((lines (shape-artist--get-lines))
-         (max-len (shape-artist--max-line-length)))
-    ;; Add left padding
-    (setq lines (mapcar (lambda (line) (concat (make-string left ?\s) line)) lines))
-    ;; Add right padding
+         (max-len (shape-artist--max-line-length))
+         (padded-width (+ left max-len right)))
+    ;; Add left and right in a single pass so max-len refers to original lengths.
     (setq lines (mapcar (lambda (line)
-                          (concat line (make-string (+ right (- max-len (length line))) ?\s)))
+                          (concat (make-string left ?\s)
+                                  line
+                                  (make-string (+ right (- max-len (length line))) ?\s)))
                         lines))
     ;; Add top padding
-    (let ((padded-width (+ left max-len right)))
-      (dotimes (_ top)
-        (push (make-string padded-width ?\s) lines))
-      ;; Add bottom padding
-      (dotimes (_ bottom)
-        (setq lines (append lines (list (make-string padded-width ?\s))))))
+    (dotimes (_ top)
+      (push (make-string padded-width ?\s) lines))
+    ;; Add bottom padding
+    (dotimes (_ bottom)
+      (setq lines (append lines (list (make-string padded-width ?\s)))))
     (shape-artist--set-lines lines)))
 
 (defun shape-artist--box-with-title (title)
@@ -586,9 +615,12 @@ TITLE is a string or nil."
     (setq lines (mapcar (lambda (line)
                           (concat line (make-string (- max-len (length line)) ?\s)))
                         lines))
-    ;; Build top border with title
+    ;; Build top border with title.
+    ;; Side lines are "| " + content + "|" = max-len + 3 chars wide.
+    ;; Top: "+" + "-" + title + dashes + "+" must also be max-len + 3.
+    ;; => dashes = max-len - title-len.
     (let* ((title-len (length title))
-           (top-border (concat "+-" title (make-string (max 0 (- max-len 1 title-len)) ?-) "+"))
+           (top-border (concat "+-" title (make-string (max 0 (- max-len title-len)) ?-) "+"))
            (bottom-border (concat "+" (make-string (1+ max-len) ?-) "+"))
            (boxed-lines (list top-border)))
       ;; Add side borders
@@ -596,6 +628,32 @@ TITLE is a string or nil."
         (push (concat "| " line "|") boxed-lines))
       (push bottom-border boxed-lines)
       (shape-artist--set-lines (nreverse boxed-lines)))))
+
+;;; --- Mode Keymap Dispatch ---
+
+(defun shape-artist--dispatch-select-start ()
+  "Enter SELECT mode (available in MOVE mode)."
+  (interactive)
+  (when (eq shape-artist--mode 'move)
+    (shape-artist-select-start)))
+
+(defun shape-artist--dispatch-ui-toggle ()
+  "Toggle sidebar (available in MOVE, SELECT, or SHAPE-EDIT modes)."
+  (interactive)
+  (when (memq shape-artist--mode '(move select shape-edit))
+    (shape-artist-ui-toggle)))
+
+(defun shape-artist--dispatch-commit-stay ()
+  "Commit and stay (available in DRAW mode)."
+  (interactive)
+  (when (eq shape-artist--mode 'draw)
+    (shape-artist-commit-stay)))
+
+(defun shape-artist--dispatch-undo ()
+  "Undo (available in DRAW mode)."
+  (interactive)
+  (when (eq shape-artist--mode 'draw)
+    (shape-artist-undo)))
 
 ;;; --- Mode-Line ---
 
@@ -633,15 +691,18 @@ TITLE is a string or nil."
   (when shape-artist--anchor
     (shape-artist-update-preview))
   (shape-artist--update-mode-line)
-  ;; Debounce sidebar updates using idle timer
+  ;; Debounce sidebar updates using idle timer.
+  ;; Capture the buffer at schedule time so the timer fires in the right context.
   (when shape-artist--update-sidebar-fn
     (when shape-artist--sidebar-timer
       (cancel-timer shape-artist--sidebar-timer))
-    (setq shape-artist--sidebar-timer
-          (run-with-idle-timer 0.1 nil
-                               (lambda ()
-                                 (when (buffer-live-p (current-buffer))
-                                   (shape-artist--maybe-update-sidebar)))))))
+    (let ((buf (current-buffer)))
+      (setq shape-artist--sidebar-timer
+            (run-with-idle-timer 0.1 nil
+                                 (lambda ()
+                                   (when (buffer-live-p buf)
+                                     (with-current-buffer buf
+                                       (shape-artist--maybe-update-sidebar)))))))))
 
 ;;; --- Lifecycle ---
 
@@ -660,7 +721,12 @@ TITLE is a string or nil."
   :lighter nil
   :keymap (let ((map (make-sparse-keymap)))
             (set-keymap-parent map (when (boundp 'shape-artist-move-map)
-                                     shape-artist-move-map))
+                                      shape-artist-move-map))
+            ;; Mode-specific dispatch bindings
+            (define-key map (kbd "C-n") #'shape-artist--dispatch-select-start)
+            (define-key map (kbd "u") #'shape-artist--dispatch-ui-toggle)
+            (define-key map (kbd "C-RET") #'shape-artist--dispatch-commit-stay)
+            (define-key map (kbd "C-<return>") #'shape-artist--dispatch-commit-stay)
             map)
   (if shape-artist-core-mode
       (shape-artist--enable)
@@ -668,6 +734,7 @@ TITLE is a string or nil."
 
 (defun shape-artist--enable ()
   "Enable artist mode setup."
+  (shape-artist--maybe-define-evil-states)
   ;; Setup picture-mode first (it's a major mode that resets buffer state)
   (picture-mode)
   ;; Save state (after picture-mode has run)
@@ -680,8 +747,9 @@ TITLE is a string or nil."
   (setq-local whitespace-style '(spaces space-mark))
   (whitespace-mode 1)
   ;; Add mode-line segment
-  (unless (memq '(:eval (shape-artist--mode-line-segment-fn)) mode-line-format)
-    (setq mode-line-format (append mode-line-format (list '(:eval (shape-artist--mode-line-segment-fn))))))
+  (unless (member shape-artist--mode-line-form mode-line-format)
+    (setq mode-line-format
+          (append mode-line-format (list shape-artist--mode-line-form))))
   ;; Set initial mode
   (setq shape-artist--mode 'move)
   (shape-artist--update-mode-line)
@@ -707,7 +775,7 @@ TITLE is a string or nil."
   (when shape-artist--saved-cursor-type
     (setq cursor-type shape-artist--saved-cursor-type))
   ;; Remove mode-line segment
-  (setq mode-line-format (delq '(:eval (shape-artist--mode-line-segment-fn)) mode-line-format))
+  (setq mode-line-format (delete shape-artist--mode-line-form mode-line-format))
   ;; Disable whitespace
   (whitespace-mode -1)
   ;; Reset mode
@@ -715,7 +783,7 @@ TITLE is a string or nil."
   (force-mode-line-update))
 
 (defun shape-artist-quit ()
-  "Fully exit artist mode to fundamental-mode."
+  "Fully exit artist mode to \\=`fundamental-mode\\='."
   (interactive)
   (shape-artist-core-mode -1)
   (fundamental-mode))

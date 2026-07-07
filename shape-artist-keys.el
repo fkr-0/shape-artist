@@ -1,5 +1,13 @@
 ;;; shape-artist-keys.el --- Keybindings for all modes -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
+;;; This module defines keybindings for all artist modes (MOVE, DRAW,
+;;; SELECT, SHAPE-EDIT).  It integrates with Evil states and provides
+;;; context-sensitive keymaps.
+
+;;; Code:
+
 (require 'shape-artist-core)
 (require 'shape-artist-ui)
 (require 'shape-artist-select)
@@ -18,8 +26,6 @@
 (define-key shape-artist-move-map (kbd "SPC") #'shape-artist-enter-draw-and-anchor)
 (define-key shape-artist-move-map (kbd "RET") #'shape-artist-commit-preview)
 (define-key shape-artist-move-map (kbd "d") #'shape-artist-enter-draw)
-(define-key shape-artist-move-map (kbd "C-n") #'shape-artist-select-start)
-(define-key shape-artist-move-map (kbd "u") #'shape-artist-ui-toggle)
 (define-key shape-artist-move-map (kbd "q") #'shape-artist-quit)
 (define-key shape-artist-move-map (kbd "a") #'shape-artist-ui-show)
 
@@ -34,11 +40,8 @@
 (define-key shape-artist-draw-map (kbd "l") #'shape-artist-draw-move-right)
 (define-key shape-artist-draw-map (kbd "SPC") #'shape-artist-set-anchor-here)
 (define-key shape-artist-draw-map (kbd "RET") #'shape-artist-commit-and-exit)
-(define-key shape-artist-draw-map (kbd "C-RET") #'shape-artist-commit-stay)
-(define-key shape-artist-draw-map (kbd "C-<return>") #'shape-artist-commit-stay)
-(define-key shape-artist-draw-map (kbd "ESC") #'shape-artist-cancel-and-exit)
+(define-key shape-artist-draw-map (kbd "<escape>") #'shape-artist-cancel-and-exit)
 (define-key shape-artist-draw-map (kbd "p") #'shape-artist-pick-tool)
-(define-key shape-artist-draw-map (kbd "u") #'shape-artist-undo)
 
 ;;; --- SELECT Mode Keybindings (Evil select) ---
 
@@ -49,8 +52,7 @@
 (define-key shape-artist-select-map (kbd "p") #'shape-artist-select-prev)
 (define-key shape-artist-select-map (kbd "g") #'shape-artist-shapes-parse)
 (define-key shape-artist-select-map (kbd "RET") #'shape-artist-select-confirm)
-(define-key shape-artist-select-map (kbd "ESC") #'shape-artist-select-cancel)
-(define-key shape-artist-select-map (kbd "u") #'shape-artist-ui-toggle)
+(define-key shape-artist-select-map (kbd "<escape>") #'shape-artist-select-cancel)
 
 ;;; --- SHAPE-EDIT Mode Keybindings (Evil shape-edit) ---
 
@@ -65,8 +67,7 @@
 (define-key shape-artist-shape-edit-map (kbd "j") #'shape-artist-shape-edit-down)
 (define-key shape-artist-shape-edit-map (kbd "k") #'shape-artist-shape-edit-up)
 (define-key shape-artist-shape-edit-map (kbd "l") #'shape-artist-shape-edit-right)
-(define-key shape-artist-shape-edit-map (kbd "ESC") #'shape-artist-shape-edit-exit)
-(define-key shape-artist-shape-edit-map (kbd "u") #'shape-artist-ui-toggle)
+(define-key shape-artist-shape-edit-map (kbd "<escape>") #'shape-artist-shape-edit-exit)
 
 ;;; --- Evil State Integration ---
 
@@ -97,7 +98,7 @@
       (kbd "RET") #'shape-artist-commit-and-exit
       (kbd "C-RET") #'shape-artist-commit-stay
       (kbd "C-<return>") #'shape-artist-commit-stay
-      (kbd "ESC") #'shape-artist-cancel-and-exit
+      (kbd "<escape>") #'shape-artist-cancel-and-exit
       "p" #'shape-artist-pick-tool
       "u" #'shape-artist-undo)
 
@@ -107,7 +108,7 @@
       "p" #'shape-artist-select-prev
       "g" #'shape-artist-shapes-parse
       (kbd "RET") #'shape-artist-select-confirm
-      (kbd "ESC") #'shape-artist-select-cancel
+      (kbd "<escape>") #'shape-artist-select-cancel
       "u" #'shape-artist-ui-toggle)
 
     ;; SHAPE-EDIT mode
@@ -120,11 +121,11 @@
       "j" #'shape-artist-shape-edit-down
       "k" #'shape-artist-shape-edit-up
       "l" #'shape-artist-shape-edit-right
-      (kbd "ESC") #'shape-artist-shape-edit-exit
+      (kbd "<escape>") #'shape-artist-shape-edit-exit
       "u" #'shape-artist-ui-toggle)))
 
-;; Setup keymaps when evil is loaded
-(with-eval-after-load 'evil
+;; Setup keymaps immediately when Evil is already available.
+(when (featurep 'evil)
   (shape-artist--setup-evil-keymaps))
 
 ;;; --- Provide ---

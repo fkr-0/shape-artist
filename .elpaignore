@@ -1,7 +1,10 @@
 *.md
+tools/
 docs/
 tests/
 .github/
 .eldev/
 Eldev
 .kilo/
+dist/
+*.tgz

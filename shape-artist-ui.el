@@ -1,8 +1,15 @@
 ;;; shape-artist-ui.el --- Persistent sidebar UI -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
+;;; This module provides a persistent sidebar UI that displays the
+;;; current mode, cursor position, anchor state, and detected shapes.
+
+;;; Code:
+
 (require 'cl-lib)
 (require 'shape-artist-core)
-(require 'artist-diagram-parse)
+(require 'shape-artist-diagram-parse)
 
 ;;; --- Variables ---
 
@@ -82,10 +89,10 @@
                           (format "%s %d: %s at (%d,%d) %dx%d%s\n"
                                   marker (1+ i)
                                   (cond
-                                   ((artist-diagram-rectangle-p shape) "rect")
-                                   ((artist-diagram-edge-p shape)
+                                   ((shape-artist-diagram-rectangle-p shape) "rect")
+                                   ((shape-artist-diagram-edge-p shape)
                                     (format "edge[%s]" (oref shape edge-type)))
-                                   ((artist-diagram-label-p shape) "label")
+                                   ((shape-artist-diagram-label-p shape) "label")
                                    (t "node"))
                                   (oref shape x) (oref shape y)
                                   (oref shape width) (oref shape height)
@@ -95,7 +102,7 @@
 
 (defun shape-artist--ui-labels-section ()
   "Generate labels section."
-  (let ((labels (cl-remove-if-not #'artist-diagram-label-p
+  (let ((labels (cl-remove-if-not #'shape-artist-diagram-label-p
                                   shape-artist--last-shapes-list)))
     (if labels
         (let ((text "=== Labels ===\n"))
@@ -126,9 +133,9 @@
       (let ((s shape-artist--locked-shape))
         (format "=== Locked Shape ===\nType: %s\nPos: (%d, %d)\nSize: %dx%d\n"
                 (cond
-                 ((artist-diagram-rectangle-p s) "rectangle")
-                 ((artist-diagram-edge-p s) "edge")
-                 ((artist-diagram-label-p s) "label")
+                 ((shape-artist-diagram-rectangle-p s) "rectangle")
+                 ((shape-artist-diagram-edge-p s) "edge")
+                 ((shape-artist-diagram-label-p s) "label")
                  (t "node"))
                 (oref s x) (oref s y)
                 (oref s width) (oref s height)))
@@ -138,29 +145,30 @@
 
 (defun shape-artist--update-sidebar ()
   "Update the sidebar buffer content."
-  (let ((sidebar-buf (get-buffer shape-artist--sidebar-buffer-name)))
-    (when (and sidebar-buf (buffer-live-p sidebar-buf))
-      (let ((artist-buf (current-buffer)))
-        (with-current-buffer sidebar-buf
-          (let ((inhibit-read-only t))
-            (erase-buffer)
-            (insert (with-current-buffer artist-buf
-                      (concat
-                       (shape-artist--ui-state-section)
-                       (shape-artist--ui-cursor-section)
-                       (shape-artist--ui-anchor-section)
-                       (shape-artist--ui-nonblank-section)
-                       "\n"
-                       (shape-artist--ui-shapes-section)
-                       "\n"
-                       (shape-artist--ui-labels-section)
-                       "\n"
-                       (shape-artist--ui-locked-shape-section)
-                       "\n"
-                       (shape-artist--ui-keys-section))))))))))
+  (when shape-artist--sidebar-buffer-name
+    (let ((sidebar-buf (get-buffer shape-artist--sidebar-buffer-name)))
+      (when (and sidebar-buf (buffer-live-p sidebar-buf))
+        (let ((artist-buf (current-buffer)))
+          (with-current-buffer sidebar-buf
+            (let ((inhibit-read-only t))
+              (erase-buffer)
+              (insert (with-current-buffer artist-buf
+                        (concat
+                         (shape-artist--ui-state-section)
+                         (shape-artist--ui-cursor-section)
+                         (shape-artist--ui-anchor-section)
+                         (shape-artist--ui-nonblank-section)
+                         "\n"
+                         (shape-artist--ui-shapes-section)
+                         "\n"
+                         (shape-artist--ui-labels-section)
+                         "\n"
+                         (shape-artist--ui-locked-shape-section)
+                         "\n"
+                         (shape-artist--ui-keys-section)))))))))))
 
-;; Register the update function
-(setq shape-artist--update-sidebar-fn #'shape-artist--update-sidebar)
+;; Register the update function as the global default for artist buffers.
+(setq-default shape-artist--update-sidebar-fn #'shape-artist--update-sidebar)
 
 ;;; --- Toggle ---
 

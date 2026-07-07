@@ -1,4 +1,5 @@
 .DS_Store
+tools/
 .idea
 *.log
 tmp/
@@ -12,3 +13,5 @@ tmp/
 *.md
 
 .eldev/
+dist/
+*.tgz

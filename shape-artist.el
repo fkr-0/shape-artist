@@ -1,6 +1,6 @@
 ;;; shape-artist.el --- Rapid ASCII diagram prototyping -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 Shape Artist Contributors
+;; Copyright (C) 2024-2026 Shape Artist Contributors
 
 ;; Author: Shape Artist Contributors
 ;; Version: 0.1.0
@@ -30,8 +30,8 @@
 (require 'shape-artist-select)
 (require 'shape-artist-shape-edit)
 (require 'shape-artist-shapes)
-(require 'artist-diagram-parse)
-(require 'artist-diagram-outline)
+(require 'shape-artist-diagram-parse)
+(require 'shape-artist-diagram-outline)
 
 ;;;###autoload
 (defun shape-artist-scratch ()

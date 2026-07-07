@@ -1,8 +1,16 @@
 ;;; shape-artist-select.el --- SELECT evil state: shape candidate cycling -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
+;;; This module implements the SELECT mode, allowing users to cycle
+;;; through detected shape candidates and lock in a shape for editing.
+
+;;; Code:
+
 (require 'cl-lib)
 (require 'shape-artist-core)
-(require 'artist-diagram-parse)
+(require 'shape-artist-shapes)
+(require 'shape-artist-diagram-parse)
 
 (declare-function evil-select-state "evil")
 (declare-function evil-normal-state "evil")
@@ -95,7 +103,7 @@
     (when shape
       ;; Highlight
       (setq shape-artist--select-overlays
-            (artist-diagram--highlight-shape shape 'region))
+            (shape-artist-diagram--highlight-shape shape 'region))
       ;; Move cursor to center
       (let ((cx (+ (oref shape x) (/ (oref shape width) 2)))
             (cy (+ (oref shape y) (/ (oref shape height) 2))))
@@ -104,10 +112,10 @@
       (message "Shape %d/%d: %s at (%d,%d) size %dx%d%s"
                (1+ shape-artist--select-index)
                (length shape-artist--last-shapes-list)
-               (if (artist-diagram-rectangle-p shape) "rectangle" "edge")
+               (if (shape-artist-diagram-rectangle-p shape) "rectangle" "edge")
                (oref shape x) (oref shape y)
                (oref shape width) (oref shape height)
-               (if (artist-diagram-edge-p shape)
+               (if (shape-artist-diagram-edge-p shape)
                    (format " [%s]" (oref shape edge-type))
                  "")))))
 
