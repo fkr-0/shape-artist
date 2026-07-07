@@ -27,12 +27,34 @@
 (defun shape-artist-shapes-current ()
   "Return the current shape candidate or nil."
   (when (and shape-artist--last-shapes-list
+             (>= shape-artist--select-index 0)
              (< shape-artist--select-index (length shape-artist--last-shapes-list)))
     (nth shape-artist--select-index shape-artist--last-shapes-list)))
 
 (defun shape-artist-shapes-count ()
   "Return the number of detected shapes."
   (length shape-artist--last-shapes-list))
+
+(defun shape-artist-shapes--find-rectangle (x y width height)
+  "Return parsed rectangle matching X, Y, WIDTH, and HEIGHT, or nil."
+  (cl-find-if
+   (lambda (shape)
+     (and (shape-artist-diagram-rectangle-p shape)
+          (= (oref shape x) x)
+          (= (oref shape y) y)
+          (= (oref shape width) width)
+          (= (oref shape height) height)))
+   shape-artist--last-shapes-list))
+
+(defun shape-artist-shapes-border-style (shape)
+  "Return SHAPE's visible horizontal border style."
+  (when (and shape (shape-artist-diagram-rectangle-p shape))
+    (save-excursion
+      (shape-artist--goto-row-col (oref shape y) (1+ (oref shape x)))
+      (pcase (char-after)
+        (?= 'heavy)
+        (?. 'light)
+        (_  'standard)))))
 
 ;;; --- Rectangle Buffer Primitives ---
 
@@ -244,7 +266,10 @@ from their EIEIO data to restore any borders the move erases."
       ;; Restore label content at new position
       (shape-artist--write-rect-interior
        (oref shape x) (oref shape y) w h interior)
-      (shape-artist-shapes-parse))))
+      (shape-artist-shapes-parse)
+      (or (shape-artist-shapes--find-rectangle
+           (oref shape x) (oref shape y) w h)
+          shape))))
 
 ;;; --- Resize ---
 
@@ -268,29 +293,35 @@ Minimum allowed size is 2×2."
       (oset shape height new-height)
       (shape-artist--shapes-commit-pass shape)
       (shape-artist--write-rect-interior x y new-width new-height interior)
-      (shape-artist-shapes-parse))))
+      (shape-artist-shapes-parse)
+      (or (shape-artist-shapes--find-rectangle x y new-width new-height)
+          shape))))
 
 ;;; --- Replace Border Style ---
 
 (defun shape-artist-shapes-replace (shape style)
-  "Change SHAPE's horizontal border character.
-STYLE is one of: \\='standard (+---+), \\='heavy (+=====+), or
-\\='light (+....+)."
+  "Change SHAPE's horizontal border character to STYLE."
   (interactive
    (list (shape-artist-shapes-current)
          (intern (completing-read "Border style: "
                                   '("standard" "heavy" "light") nil t))))
   (when (and shape (shape-artist-diagram-rectangle-p shape))
+    (unless (memq style '(standard heavy light))
+      (user-error "Unsupported border style: %s" style))
     (let ((h-char (pcase style
                     ('heavy ?=)
                     ('light ?.)
-                    (_      ?-))))
+                    ('standard ?-))))
       (shape-artist--draw-rect-border
        (oref shape x) (oref shape y)
        (oref shape width) (oref shape height)
        h-char)
       (shape-artist--ensure-grid-rectangular)
-      (shape-artist-shapes-parse))))
+      (shape-artist-shapes-parse)
+      (or (shape-artist-shapes--find-rectangle
+           (oref shape x) (oref shape y)
+           (oref shape width) (oref shape height))
+          shape))))
 
 ;;; --- Provide ---
 

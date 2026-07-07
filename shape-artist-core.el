@@ -27,6 +27,7 @@
 (declare-function evil-change-state "evil")
 (declare-function shape-artist-select-start "shape-artist-select")
 (declare-function shape-artist-ui-toggle "shape-artist-ui")
+(declare-function shape-artist--setup-evil-keymaps "shape-artist-keys")
 
 ;;; --- Evil State Definitions ---
 
@@ -735,6 +736,8 @@ TITLE is a string or nil.  When nil, skip the box."
 (defun shape-artist--enable ()
   "Enable artist mode setup."
   (shape-artist--maybe-define-evil-states)
+  (when (fboundp 'shape-artist--setup-evil-keymaps)
+    (shape-artist--setup-evil-keymaps))
   ;; Setup picture-mode first (it's a major mode that resets buffer state)
   (picture-mode)
   ;; Save state (after picture-mode has run)

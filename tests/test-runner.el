@@ -35,6 +35,9 @@
 (load (expand-file-name "test-shape-artist-diagram-outline.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-e2e.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
 
 ;; Run tests
 (ert-run-tests-batch-and-exit)

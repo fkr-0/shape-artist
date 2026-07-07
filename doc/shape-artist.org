@@ -126,15 +126,64 @@ Cycle through detected shapes.
 
 Edit the locked-in shape.
 
-| Key       | Command                        |
-|-----------+--------------------------------|
-| =e=       | Edit label                     |
-| =m=       | Move shape                     |
-| =r=       | Resize shape                   |
-| =x=       | Replace shape type             |
-| =h/j/k/l= | Navigate interior              |
-| =ESC=     | Exit to MOVE                   |
-| =u=       | Toggle sidebar                 |
+| Key       | Command                                      |
+|-----------+----------------------------------------------|
+| =h/j/k/l= | Navigate inside the locked shape             |
+| =H/J/K/L= | Move the whole locked shape left/down/up/right |
+| =>= / =<= | Widen / narrow the locked shape              |
+| =+= / =_= | Make the locked shape taller / shorter       |
+| =e=       | Edit label                                   |
+| =m=       | Prompt for move delta                        |
+| =r=       | Prompt for absolute resize                   |
+| =x=       | Cycle border style: standard -> heavy -> light |
+| =s=       | Prompt for border style                      |
+| =ESC=     | Exit to MOVE                                 |
+| =u=       | Toggle sidebar                               |
+
+
+* End-to-End Diagram Manipulation Workflow
+
+The tested manipulation path is intentionally modal and Evil-like, while still
+working without Evil installed:
+
+1. In MOVE mode, use =SPC= to anchor and enter DRAW mode, or =d= to enter DRAW
+   mode without an anchor.
+2. In DRAW mode, use =h/j/k/l= to draw and =RET= to commit.  Shape Artist parses
+   the resulting diagram immediately after commit.
+3. In MOVE mode, press =C-n= to enter SELECT mode and =n= / =p= to cycle detected
+   candidates.
+4. Press =RET= in SELECT mode to lock the current rectangle and enter
+   SHAPE-EDIT mode.
+5. In SHAPE-EDIT mode, use repeatable single-key operations:
+   - =H/J/K/L= moves the whole locked shape.
+   - =>= / =<= changes width.
+   - =+= / =_= changes height.
+   - =x= cycles border style among standard, heavy, and light.
+   - =h/j/k/l= keeps cursor movement constrained to the shape interior.
+6. Press =ESC= to unlock the shape and return to MOVE mode.
+
+The end-to-end regression suite covers this complete flow through the active
+keymaps, not only by direct function calls.  It also verifies that heavy and
+light borders remain parseable as rectangles after style changes, and that a
+locked shape remains locked across repeated move, resize, and style operations.
+
+** Current scope and remaining design choices
+
+The implemented model is full-fledged for rectangle-centric ASCII diagram
+manipulation: draw, parse, select, lock, move, resize, label, style, outline, and
+sidebar updates all have direct commands and tests.  The remaining larger design
+areas are deliberately left as future feature work rather than hidden stubs:
+
+- Edge manipulation: edges are detected and classified, but locked edge editing
+  does not yet have move/reroute/attach commands.
+- Multi-selection: SELECT mode locks one shape at a time; batch move/align/group
+  operations are not implemented yet.
+- Geometry constraints: resize currently changes the right/bottom extent of the
+  rectangle.  Anchored resize from left/top edges could be added as a separate
+  command family.
+- Rich shape kinds: border style cycling is implemented for rectangle borders;
+  diamonds, rounded boxes, arrows, and connectors need explicit shape models
+  before they can be edited safely.
 
 * Normalization
 
@@ -167,8 +216,9 @@ When Evil is loaded, Shape Artist defines custom Evil states:
 
 MOVE mode uses Evil's =normal= state with overridden keybindings.
 
-Evil state definitions and keymaps are loaded via
-=with-eval-after-load= so the package works without Evil installed.
+Evil state definitions and keymaps are installed when Shape Artist mode is
+enabled and Evil is available.  The package also works without Evil installed,
+using the built-in modal dispatch keymap.
 
 * Outline Buffer
 

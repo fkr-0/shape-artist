@@ -84,6 +84,15 @@
 
 ;;; --- Rectangle Detection ---
 
+(defun shape-artist-diagram--horizontal-border-char-p (char)
+  "Return non-nil when CHAR is a supported rectangle horizontal border."
+  (memq char '(?- ?= ?.)))
+
+(defun shape-artist-diagram--horizontal-or-corner-char-p (char)
+  "Return non-nil when CHAR is a horizontal border or corner."
+  (or (shape-artist-diagram--horizontal-border-char-p char)
+      (eq char ?+)))
+
 (defun shape-artist-diagram--detect-rectangles (grid)
   "Detect rectangles in GRID.
 
@@ -98,7 +107,8 @@ Return a list of \\='shape-artist-diagram-rectangle objects."
         (when (and (not (gethash (cons r c) visited))
                    (eq (shape-artist-diagram--grid-char grid r c) ?+)
                    (< (1+ c) cols)
-                   (eq (shape-artist-diagram--grid-char grid r (1+ c)) ?-))
+                   (shape-artist-diagram--horizontal-border-char-p
+                    (shape-artist-diagram--grid-char grid r (1+ c))))
           ;; Found potential top-left corner, try to trace rectangle
           (let ((rect (shape-artist-diagram--trace-rectangle grid r c rows cols)))
             (when rect
@@ -120,7 +130,8 @@ Returns an \\='shape-artist-diagram-rectangle or nil if not a valid rectangle."
   ;; Find top-right corner
   (let ((c2 c))
     (while (and (< (1+ c2) cols)
-                (memq (shape-artist-diagram--grid-char grid r (1+ c2)) '(?- ?+)))
+                (shape-artist-diagram--horizontal-or-corner-char-p
+                 (shape-artist-diagram--grid-char grid r (1+ c2))))
       (setq c2 (1+ c2)))
     ;; Top-right must be '+'
     (when (eq (shape-artist-diagram--grid-char grid r c2) ?+)
@@ -140,7 +151,8 @@ Returns an \\='shape-artist-diagram-rectangle or nil if not a valid rectangle."
                   (setq valid nil)))
               ;; Verify bottom side
               (dotimes (dc (- c2 c 1))
-                (unless (memq (shape-artist-diagram--grid-char grid r2 (+ c 1 dc)) '(?- ?+))
+                (unless (shape-artist-diagram--horizontal-or-corner-char-p
+                         (shape-artist-diagram--grid-char grid r2 (+ c 1 dc)))
                   (setq valid nil)))
               (when valid
                 (make-instance 'shape-artist-diagram-rectangle
