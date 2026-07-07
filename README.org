@@ -49,6 +49,7 @@ sidebar.  From there:
 4. =RET= commits the shape
 5. =C-n= enters SELECT mode to pick a shape
 6. =RET= in SELECT locks the shape for editing
+7. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape, =>= / =<= to change width, =+= / =_= to change height, and =x= to cycle border style
 
 See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
 
@@ -59,6 +60,12 @@ See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
 #+begin_example
 eldev test
 #+end_example
+
+** End-to-end tests
+
+The suite includes modal end-to-end tests that drive active keymaps through
+MOVE, DRAW, SELECT, and SHAPE-EDIT.  These tests cover Evil-style operation even
+when Evil is absent, plus delayed Evil loading when the dependency is available.
 
 ** Linting
 
