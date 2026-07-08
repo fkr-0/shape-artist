@@ -46,6 +46,9 @@
 (define-key shape-artist-select-map (kbd "n") #'shape-artist-select-next)
 (define-key shape-artist-select-map (kbd "p") #'shape-artist-select-prev)
 (define-key shape-artist-select-map (kbd "g") #'shape-artist-shapes-parse)
+(define-key shape-artist-select-map (kbd "t") #'shape-artist-select-toggle-current)
+(define-key shape-artist-select-map (kbd "T") #'shape-artist-select-all)
+(define-key shape-artist-select-map (kbd "c") #'shape-artist-select-clear-selected)
 (define-key shape-artist-select-map (kbd "RET") #'shape-artist-select-confirm)
 (define-key shape-artist-select-map (kbd "<escape>") #'shape-artist-select-cancel)
 
@@ -69,6 +72,10 @@
 (define-key shape-artist-shape-edit-map (kbd "<") #'shape-artist-shape-resize-narrower)
 (define-key shape-artist-shape-edit-map (kbd "+") #'shape-artist-shape-resize-taller)
 (define-key shape-artist-shape-edit-map (kbd "_") #'shape-artist-shape-resize-shorter)
+(define-key shape-artist-shape-edit-map (kbd "[") #'shape-artist-shape-resize-left)
+(define-key shape-artist-shape-edit-map (kbd "]") #'shape-artist-shape-shrink-left)
+(define-key shape-artist-shape-edit-map (kbd "{") #'shape-artist-shape-resize-up)
+(define-key shape-artist-shape-edit-map (kbd "}") #'shape-artist-shape-shrink-up)
 (define-key shape-artist-shape-edit-map (kbd "<escape>") #'shape-artist-shape-edit-exit)
 
 ;;; --- Modal Dispatch Helpers ---
@@ -231,6 +238,49 @@
   (when (eq shape-artist--mode 'shape-edit)
     (shape-artist-shape-resize-shorter count)))
 
+
+(defun shape-artist--dispatch-select-toggle ()
+  "Toggle current selection candidate when in SELECT mode."
+  (interactive)
+  (when (eq shape-artist--mode 'select)
+    (shape-artist-select-toggle-current)))
+
+(defun shape-artist--dispatch-select-all ()
+  "Select all candidates when in SELECT mode."
+  (interactive)
+  (when (eq shape-artist--mode 'select)
+    (shape-artist-select-all)))
+
+(defun shape-artist--dispatch-select-clear ()
+  "Clear selected candidates when in SELECT mode."
+  (interactive)
+  (when (eq shape-artist--mode 'select)
+    (shape-artist-select-clear-selected)))
+
+(defun shape-artist--dispatch-shape-resize-left (&optional count)
+  "Grow locked rectangle left by COUNT cells when in SHAPE-EDIT mode."
+  (interactive "p")
+  (when (eq shape-artist--mode 'shape-edit)
+    (shape-artist-shape-resize-left count)))
+
+(defun shape-artist--dispatch-shape-shrink-left (&optional count)
+  "Shrink locked rectangle from the left by COUNT cells."
+  (interactive "p")
+  (when (eq shape-artist--mode 'shape-edit)
+    (shape-artist-shape-shrink-left count)))
+
+(defun shape-artist--dispatch-shape-resize-up (&optional count)
+  "Grow locked rectangle upward by COUNT cells."
+  (interactive "p")
+  (when (eq shape-artist--mode 'shape-edit)
+    (shape-artist-shape-resize-up count)))
+
+(defun shape-artist--dispatch-shape-shrink-up (&optional count)
+  "Shrink locked rectangle from top by COUNT cells."
+  (interactive "p")
+  (when (eq shape-artist--mode 'shape-edit)
+    (shape-artist-shape-shrink-up count)))
+
 (defun shape-artist--install-modal-dispatch-keymap ()
   "Install non-Evil modal dispatch bindings on `shape-artist-core-mode-map'."
   (when (boundp 'shape-artist-core-mode-map)
@@ -252,6 +302,9 @@
     (define-key shape-artist-core-mode-map (kbd "n") #'shape-artist--dispatch-select-next)
     (define-key shape-artist-core-mode-map (kbd "p") #'shape-artist--dispatch-select-prev)
     (define-key shape-artist-core-mode-map (kbd "g") #'shape-artist--dispatch-select-refresh)
+    (define-key shape-artist-core-mode-map (kbd "t") #'shape-artist--dispatch-select-toggle)
+    (define-key shape-artist-core-mode-map (kbd "T") #'shape-artist--dispatch-select-all)
+    (define-key shape-artist-core-mode-map (kbd "c") #'shape-artist--dispatch-select-clear)
     (define-key shape-artist-core-mode-map (kbd "e") #'shape-artist--dispatch-shape-edit-label)
     (define-key shape-artist-core-mode-map (kbd "m") #'shape-artist--dispatch-shape-move)
     (define-key shape-artist-core-mode-map (kbd "r") #'shape-artist--dispatch-shape-resize)
@@ -264,7 +317,11 @@
     (define-key shape-artist-core-mode-map (kbd ">") #'shape-artist--dispatch-shape-resize-wider)
     (define-key shape-artist-core-mode-map (kbd "<") #'shape-artist--dispatch-shape-resize-narrower)
     (define-key shape-artist-core-mode-map (kbd "+") #'shape-artist--dispatch-shape-resize-taller)
-    (define-key shape-artist-core-mode-map (kbd "_") #'shape-artist--dispatch-shape-resize-shorter)))
+    (define-key shape-artist-core-mode-map (kbd "_") #'shape-artist--dispatch-shape-resize-shorter)
+    (define-key shape-artist-core-mode-map (kbd "[") #'shape-artist--dispatch-shape-resize-left)
+    (define-key shape-artist-core-mode-map (kbd "]") #'shape-artist--dispatch-shape-shrink-left)
+    (define-key shape-artist-core-mode-map (kbd "{") #'shape-artist--dispatch-shape-resize-up)
+    (define-key shape-artist-core-mode-map (kbd "}") #'shape-artist--dispatch-shape-shrink-up)))
 
 ;;; --- Evil State Integration ---
 
@@ -301,6 +358,9 @@
       "n" #'shape-artist-select-next
       "p" #'shape-artist-select-prev
       "g" #'shape-artist-shapes-parse
+      "t" #'shape-artist-select-toggle-current
+      "T" #'shape-artist-select-all
+      "c" #'shape-artist-select-clear-selected
       (kbd "RET") #'shape-artist-select-confirm
       (kbd "<escape>") #'shape-artist-select-cancel
       "u" #'shape-artist-ui-toggle)
@@ -323,6 +383,10 @@
       "<" #'shape-artist-shape-resize-narrower
       "+" #'shape-artist-shape-resize-taller
       "_" #'shape-artist-shape-resize-shorter
+      "[" #'shape-artist-shape-resize-left
+      "]" #'shape-artist-shape-shrink-left
+      "{" #'shape-artist-shape-resize-up
+      "}" #'shape-artist-shape-shrink-up
       (kbd "<escape>") #'shape-artist-shape-edit-exit
       "u" #'shape-artist-ui-toggle)))
 

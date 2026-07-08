@@ -86,7 +86,7 @@
                              " [LOCKED]" "")))
             (setq text
                   (concat text
-                          (format "%s %d: %s at (%d,%d) %dx%d%s\n"
+                          (format "%s %d: %s at (%d,%d) %dx%d%s%s\n"
                                   marker (1+ i)
                                   (cond
                                    ((shape-artist-diagram-rectangle-p shape) "rect")

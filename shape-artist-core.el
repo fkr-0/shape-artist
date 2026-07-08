@@ -105,6 +105,9 @@ package still byte-compiles cleanly when Evil is not loaded during build."
 (defvar-local shape-artist--locked-shape nil
   "Currently locked-in shape for SHAPE-EDIT mode.")
 
+(defvar-local shape-artist--selected-shape-signatures nil
+  "Stable signatures of selected shapes for grouped SHAPE-EDIT operations.")
+
 (defface shape-artist-preview-face
   '((t :background "#ffff66"))
   "Face for shape preview overlays."

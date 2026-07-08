@@ -1,10 +1,8 @@
-;;; shape-artist-shape-edit.el --- SHAPE-EDIT evil state: move/resize/label -*- lexical-binding: t; -*-
+;;; shape-artist-shape-edit.el --- SHAPE-EDIT state operations -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
-;;; This module implements SHAPE-EDIT mode for locked-in shapes.
-;;; It supports prompt-based editing commands and repeatable Evil-style
-;;; directional commands for moving, resizing, labeling, and border styling.
+;;; Repeatable Evil-style editing for one locked shape or a SELECT-mode group.
 
 ;;; Code:
 
@@ -12,160 +10,223 @@
 (require 'shape-artist-core)
 (require 'shape-artist-shapes)
 
-(declare-function evil-shape-edit-state "evil")
 (declare-function evil-normal-state "evil")
 
-;;; --- SHAPE-EDIT Mode Entry/Exit ---
-
 (defun shape-artist-shape-edit-exit ()
-  "Exit SHAPE-EDIT mode, return to MOVE."
+  "Exit SHAPE-EDIT mode, clear locks, and return to MOVE."
   (interactive)
   (setq shape-artist--locked-shape nil)
+  (setq shape-artist--selected-shape-signatures nil)
   (setq shape-artist--mode 'move)
   (when (fboundp 'evil-normal-state)
     (evil-normal-state))
   (shape-artist--update-mode-line)
   (shape-artist--maybe-update-sidebar))
 
-;;; --- Locked Shape Helpers ---
-
-(defun shape-artist-shape-edit--set-locked-shape (shape)
-  "Set SHAPE as the current locked shape and refresh edit UI."
-  (when shape
-    (setq shape-artist--locked-shape shape)
-    (shape-artist--maybe-update-sidebar))
-  shape)
-
 (defun shape-artist-shape-edit--count (count)
   "Normalize interactive COUNT to a positive integer."
   (max 1 (prefix-numeric-value (or count 1))))
 
-;;; --- Label Editing ---
+(defun shape-artist-shape-edit--target-signatures ()
+  "Return target signatures for current shape edit operation."
+  (or shape-artist--selected-shape-signatures
+      (and shape-artist--locked-shape
+           (list (shape-artist-shapes-signature shape-artist--locked-shape)))))
+
+(defun shape-artist-shape-edit--set-targets (shapes)
+  "Refresh lock and group selection from SHAPES."
+  (setq shapes (cl-remove nil shapes))
+  (when shapes
+    (setq shape-artist--locked-shape (car shapes))
+    (when shape-artist--selected-shape-signatures
+      (setq shape-artist--selected-shape-signatures
+            (mapcar #'shape-artist-shapes-signature shapes)))
+    (shape-artist--maybe-update-sidebar)
+    (car shapes)))
+
+(defun shape-artist-shape-edit--apply (fn)
+  "Apply FN to locked shape or selected group."
+  (let ((results nil))
+    (dolist (sig (shape-artist-shape-edit--target-signatures))
+      (let ((shape (shape-artist-shapes-find-by-signature sig)))
+        (when shape
+          (push (funcall fn shape) results))))
+    (shape-artist-shape-edit--set-targets (nreverse results))))
 
 (defun shape-artist-shape-edit-label ()
-  "Edit the label of the locked-in shape."
+  "Edit the label of the locked-in rectangle."
   (interactive)
   (when shape-artist--locked-shape
-    (shape-artist-shape-edit--set-locked-shape
-     (shape-artist-shapes-edit-label shape-artist--locked-shape))))
-
-;;; --- Move Shape ---
+    (shape-artist-shape-edit--set-targets
+     (list (shape-artist-shapes-edit-label shape-artist--locked-shape)))))
 
 (defun shape-artist-shape-move (&optional dx dy)
-  "Move the locked-in shape by DX columns and DY rows.
-When called interactively, prompt for DX and DY.  Directional commands such as
-`shape-artist-shape-move-right' are better for repeatable Evil-style editing."
+  "Move target shape or group by DX and DY."
   (interactive)
-  (when shape-artist--locked-shape
-    (let ((dx (or dx (read-number "dx: " 0)))
-          (dy (or dy (read-number "dy: " 0))))
-      (shape-artist-shape-edit--set-locked-shape
-       (shape-artist-shapes-move shape-artist--locked-shape dx dy)))))
+  (let ((dx (or dx (read-number "dx: " 0)))
+        (dy (or dy (read-number "dy: " 0))))
+    (shape-artist-shape-edit--apply
+     (lambda (shape) (shape-artist-shapes-move shape dx dy)))))
 
 (defun shape-artist-shape-move-left (&optional count)
-  "Move the locked shape left by COUNT cells."
+  "Move targets left by COUNT cells."
   (interactive "p")
   (shape-artist-shape-move (- (shape-artist-shape-edit--count count)) 0))
 
 (defun shape-artist-shape-move-right (&optional count)
-  "Move the locked shape right by COUNT cells."
+  "Move targets right by COUNT cells."
   (interactive "p")
   (shape-artist-shape-move (shape-artist-shape-edit--count count) 0))
 
 (defun shape-artist-shape-move-up (&optional count)
-  "Move the locked shape up by COUNT cells."
+  "Move targets up by COUNT cells."
   (interactive "p")
   (shape-artist-shape-move 0 (- (shape-artist-shape-edit--count count))))
 
 (defun shape-artist-shape-move-down (&optional count)
-  "Move the locked shape down by COUNT cells."
+  "Move targets down by COUNT cells."
   (interactive "p")
   (shape-artist-shape-move 0 (shape-artist-shape-edit--count count)))
 
-;;; --- Resize Shape ---
-
 (defun shape-artist-shape-resize (&optional width height)
-  "Resize the locked-in shape to WIDTH and HEIGHT.
-When called interactively, prompt for WIDTH and HEIGHT."
+  "Resize locked rectangle to WIDTH and HEIGHT."
   (interactive)
   (when shape-artist--locked-shape
     (let ((width (or width (read-number "New width: ")))
           (height (or height (read-number "New height: "))))
-      (shape-artist-shape-edit--set-locked-shape
-       (shape-artist-shapes-resize shape-artist--locked-shape width height)))))
+      (shape-artist-shape-edit--set-targets
+       (list (shape-artist-shapes-resize shape-artist--locked-shape width height))))))
+
+(defun shape-artist-shape-edit--resize-rect-targets (x-anchor dx y-anchor dy)
+  "Resize all rectangle targets from X-ANCHOR/Y-ANCHOR by DX/DY."
+  (shape-artist-shape-edit--apply
+   (lambda (shape)
+     (if (shape-artist-diagram-rectangle-p shape)
+         (shape-artist-shapes-resize-anchored shape x-anchor dx y-anchor dy)
+       shape))))
 
 (defun shape-artist-shape-resize-wider (&optional count)
-  "Increase locked shape width by COUNT cells."
+  "Widen rectangle targets, or extend horizontal edges."
   (interactive "p")
-  (when shape-artist--locked-shape
-    (shape-artist-shape-resize
-     (+ (oref shape-artist--locked-shape width)
-        (shape-artist-shape-edit--count count))
-     (oref shape-artist--locked-shape height))))
+  (let ((n (shape-artist-shape-edit--count count)))
+    (shape-artist-shape-edit--apply
+     (lambda (shape)
+       (cond
+        ((shape-artist-diagram-rectangle-p shape)
+         (shape-artist-shapes-resize-anchored shape 'right n 'bottom 0))
+        ((and (shape-artist-diagram-edge-p shape) (= (oref shape y) (oref shape y2)))
+         (shape-artist-shapes-edge-extend shape n))
+        (t shape))))))
 
 (defun shape-artist-shape-resize-narrower (&optional count)
-  "Decrease locked shape width by COUNT cells, stopping at width 2."
+  "Narrow rectangle targets, or shorten horizontal edges."
   (interactive "p")
-  (when shape-artist--locked-shape
-    (shape-artist-shape-resize
-     (max 2 (- (oref shape-artist--locked-shape width)
-               (shape-artist-shape-edit--count count)))
-     (oref shape-artist--locked-shape height))))
+  (let ((n (shape-artist-shape-edit--count count)))
+    (shape-artist-shape-edit--apply
+     (lambda (shape)
+       (cond
+        ((shape-artist-diagram-rectangle-p shape)
+         (let ((delta (- (min n (- (oref shape width) 2)))))
+           (if (= delta 0) shape
+             (shape-artist-shapes-resize-anchored shape 'right delta 'bottom 0))))
+        ((and (shape-artist-diagram-edge-p shape) (= (oref shape y) (oref shape y2)))
+         (shape-artist-shapes-edge-extend shape (- n)))
+        (t shape))))))
 
 (defun shape-artist-shape-resize-taller (&optional count)
-  "Increase locked shape height by COUNT cells."
+  "Make rectangle targets taller, or extend vertical edges."
   (interactive "p")
-  (when shape-artist--locked-shape
-    (shape-artist-shape-resize
-     (oref shape-artist--locked-shape width)
-     (+ (oref shape-artist--locked-shape height)
-        (shape-artist-shape-edit--count count)))))
+  (let ((n (shape-artist-shape-edit--count count)))
+    (shape-artist-shape-edit--apply
+     (lambda (shape)
+       (cond
+        ((shape-artist-diagram-rectangle-p shape)
+         (shape-artist-shapes-resize-anchored shape 'right 0 'bottom n))
+        ((and (shape-artist-diagram-edge-p shape) (= (oref shape x) (oref shape x2)))
+         (shape-artist-shapes-edge-extend shape n))
+        (t shape))))))
 
 (defun shape-artist-shape-resize-shorter (&optional count)
-  "Decrease locked shape height by COUNT cells, stopping at height 2."
+  "Make rectangle targets shorter, or shorten vertical edges."
   (interactive "p")
-  (when shape-artist--locked-shape
-    (shape-artist-shape-resize
-     (oref shape-artist--locked-shape width)
-     (max 2 (- (oref shape-artist--locked-shape height)
-               (shape-artist-shape-edit--count count))))))
+  (let ((n (shape-artist-shape-edit--count count)))
+    (shape-artist-shape-edit--apply
+     (lambda (shape)
+       (cond
+        ((shape-artist-diagram-rectangle-p shape)
+         (let ((delta (- (min n (- (oref shape height) 2)))))
+           (if (= delta 0) shape
+             (shape-artist-shapes-resize-anchored shape 'right 0 'bottom delta))))
+        ((and (shape-artist-diagram-edge-p shape) (= (oref shape x) (oref shape x2)))
+         (shape-artist-shapes-edge-extend shape (- n)))
+        (t shape))))))
 
-;;; --- Replace Border Style ---
+(defun shape-artist-shape-resize-left (&optional count)
+  "Grow rectangle targets to the left by COUNT cells."
+  (interactive "p")
+  (shape-artist-shape-edit--resize-rect-targets
+   'left (shape-artist-shape-edit--count count) 'bottom 0))
+
+(defun shape-artist-shape-shrink-left (&optional count)
+  "Shrink rectangle targets from the left by COUNT cells."
+  (interactive "p")
+  (shape-artist-shape-edit--resize-rect-targets
+   'left (- (shape-artist-shape-edit--count count)) 'bottom 0))
+
+(defun shape-artist-shape-resize-up (&optional count)
+  "Grow rectangle targets upward by COUNT cells."
+  (interactive "p")
+  (shape-artist-shape-edit--resize-rect-targets
+   'right 0 'top (shape-artist-shape-edit--count count)))
+
+(defun shape-artist-shape-shrink-up (&optional count)
+  "Shrink rectangle targets from the top by COUNT cells."
+  (interactive "p")
+  (shape-artist-shape-edit--resize-rect-targets
+   'right 0 'top (- (shape-artist-shape-edit--count count))))
 
 (defun shape-artist-shape-set-style (&optional style)
-  "Set locked shape border STYLE.
-STYLE is one of `standard', `heavy', or `light'.  Interactively, prompt for it."
+  "Set rectangle border or edge connector STYLE."
   (interactive)
-  (when shape-artist--locked-shape
-    (let ((style (or style
-                     (intern (completing-read
-                              "Border style: "
-                              '("standard" "heavy" "light") nil t)))))
-      (shape-artist-shape-edit--set-locked-shape
-       (shape-artist-shapes-replace shape-artist--locked-shape style)))))
+  (let ((style (or style
+                   (intern (completing-read
+                            "Style: "
+                            '("standard" "heavy" "light" "plain" "arrow-end" "arrow-both") nil t)))))
+    (shape-artist-shape-edit--apply
+     (lambda (shape)
+       (cond
+        ((shape-artist-diagram-rectangle-p shape)
+         (shape-artist-shapes-replace shape style))
+        ((shape-artist-diagram-edge-p shape)
+         (shape-artist-shapes-set-edge-style shape style))
+        (t shape))))))
 
 (defun shape-artist-shape-cycle-style ()
-  "Cycle locked shape border style through standard, heavy, and light."
+  "Cycle rectangle border style or edge connector style."
   (interactive)
-  (when shape-artist--locked-shape
-    (let* ((current (shape-artist-shapes-border-style shape-artist--locked-shape))
-           (next (pcase current
-                   ('standard 'heavy)
-                   ('heavy 'light)
-                   (_ 'standard))))
-      (shape-artist-shape-set-style next))))
+  (shape-artist-shape-edit--apply
+   (lambda (shape)
+     (cond
+      ((shape-artist-diagram-rectangle-p shape)
+       (let* ((current (shape-artist-shapes-border-style shape))
+              (next (pcase current ('standard 'heavy) ('heavy 'light) (_ 'standard))))
+         (shape-artist-shapes-replace shape next)))
+      ((shape-artist-diagram-edge-p shape)
+       (let* ((current (shape-artist-shapes-edge-style shape))
+              (next (pcase current ('plain 'arrow-end) ('arrow-end 'arrow-both) (_ 'plain))))
+         (shape-artist-shapes-set-edge-style shape next)))
+      (t shape)))))
 
 (defun shape-artist-shape-replace ()
-  "Cycle the locked-in shape's border style."
+  "Cycle the locked-in shape's style."
   (interactive)
   (shape-artist-shape-cycle-style))
 
-;;; --- Interior Navigation ---
-
 (defun shape-artist-shape-edit-up ()
-  "Navigate up within shape interior."
+  "Navigate up within locked shape interior."
   (interactive)
-  (when shape-artist--locked-shape
+  (when (and shape-artist--locked-shape
+             (shape-artist-diagram-rectangle-p shape-artist--locked-shape))
     (let* ((shape shape-artist--locked-shape)
            (pos (shape-artist--current-row-col))
            (min-y (1+ (oref shape y))))
@@ -173,9 +234,10 @@ STYLE is one of `standard', `heavy', or `light'.  Interactively, prompt for it."
         (shape-artist--goto-row-col (1- (car pos)) (cdr pos))))))
 
 (defun shape-artist-shape-edit-down ()
-  "Navigate down within shape interior."
+  "Navigate down within locked shape interior."
   (interactive)
-  (when shape-artist--locked-shape
+  (when (and shape-artist--locked-shape
+             (shape-artist-diagram-rectangle-p shape-artist--locked-shape))
     (let* ((shape shape-artist--locked-shape)
            (pos (shape-artist--current-row-col))
            (max-y (1- (+ (oref shape y) (oref shape height)))))
@@ -183,9 +245,10 @@ STYLE is one of `standard', `heavy', or `light'.  Interactively, prompt for it."
         (shape-artist--goto-row-col (1+ (car pos)) (cdr pos))))))
 
 (defun shape-artist-shape-edit-left ()
-  "Navigate left within shape interior."
+  "Navigate left within locked shape interior."
   (interactive)
-  (when shape-artist--locked-shape
+  (when (and shape-artist--locked-shape
+             (shape-artist-diagram-rectangle-p shape-artist--locked-shape))
     (let* ((shape shape-artist--locked-shape)
            (pos (shape-artist--current-row-col))
            (min-x (1+ (oref shape x))))
@@ -193,16 +256,15 @@ STYLE is one of `standard', `heavy', or `light'.  Interactively, prompt for it."
         (shape-artist--goto-row-col (car pos) (1- (cdr pos)))))))
 
 (defun shape-artist-shape-edit-right ()
-  "Navigate right within shape interior."
+  "Navigate right within locked shape interior."
   (interactive)
-  (when shape-artist--locked-shape
+  (when (and shape-artist--locked-shape
+             (shape-artist-diagram-rectangle-p shape-artist--locked-shape))
     (let* ((shape shape-artist--locked-shape)
            (pos (shape-artist--current-row-col))
            (max-x (1- (+ (oref shape x) (oref shape width)))))
       (when (< (cdr pos) max-x)
         (shape-artist--goto-row-col (car pos) (1+ (cdr pos)))))))
-
-;;; --- Provide ---
 
 (provide 'shape-artist-shape-edit)
 ;;; shape-artist-shape-edit.el ends here

@@ -117,8 +117,11 @@ Cycle through detected shapes.
 |---------+-------------------------------|
 | =n=     | Next shape                    |
 | =p=     | Previous shape                |
+| =t=     | Toggle current candidate in multi-selection |
+| =T=     | Select all non-label shapes   |
+| =c=     | Clear multi-selection         |
 | =g=     | Re-parse buffer               |
-| =RET=   | Lock in shape (enter EDIT)    |
+| =RET=   | Lock shape or selected group (enter EDIT) |
 | =ESC=   | Cancel and return to MOVE     |
 | =u=     | Toggle sidebar                |
 
@@ -129,14 +132,16 @@ Edit the locked-in shape.
 | Key       | Command                                      |
 |-----------+----------------------------------------------|
 | =h/j/k/l= | Navigate inside the locked shape             |
-| =H/J/K/L= | Move the whole locked shape left/down/up/right |
-| =>= / =<= | Widen / narrow the locked shape              |
-| =+= / =_= | Make the locked shape taller / shorter       |
+| =H/J/K/L= | Move locked shape or selected group left/down/up/right |
+| =>= / =<= | Widen / narrow rectangles; extend / shorten horizontal edges |
+| =+= / =_= | Make rectangles taller / shorter; extend / shorten vertical edges |
+| =[= / =]= | Grow / shrink rectangle from the left edge   |
+| ={= / =}= | Grow / shrink rectangle from the top edge    |
 | =e=       | Edit label                                   |
 | =m=       | Prompt for move delta                        |
 | =r=       | Prompt for absolute resize                   |
-| =x=       | Cycle border style: standard -> heavy -> light |
-| =s=       | Prompt for border style                      |
+| =x=       | Cycle border style or edge arrow style       |
+| =s=       | Prompt for rectangle or edge style           |
 | =ESC=     | Exit to MOVE                                 |
 | =u=       | Toggle sidebar                               |
 
@@ -169,21 +174,16 @@ locked shape remains locked across repeated move, resize, and style operations.
 
 ** Current scope and remaining design choices
 
-The implemented model is full-fledged for rectangle-centric ASCII diagram
-manipulation: draw, parse, select, lock, move, resize, label, style, outline, and
-sidebar updates all have direct commands and tests.  The remaining larger design
-areas are deliberately left as future feature work rather than hidden stubs:
+The implemented model now covers rectangle-centric and straight-edge ASCII
+diagram manipulation: draw, parse, select, multi-select, lock, move, resize,
+label, style, arrows, outline, and sidebar updates all have direct commands and
+end-to-end regression tests.
 
-- Edge manipulation: edges are detected and classified, but locked edge editing
-  does not yet have move/reroute/attach commands.
-- Multi-selection: SELECT mode locks one shape at a time; batch move/align/group
-  operations are not implemented yet.
-- Geometry constraints: resize currently changes the right/bottom extent of the
-  rectangle.  Anchored resize from left/top edges could be added as a separate
-  command family.
-- Rich shape kinds: border style cycling is implemented for rectangle borders;
-  diamonds, rounded boxes, arrows, and connectors need explicit shape models
-  before they can be edited safely.
+Remaining larger design areas are explicit future work rather than hidden stubs:
+
+- Orthogonal edge rerouting and endpoint attachment to boxes.
+- Batch alignment/distribution commands beyond grouped move/resize.
+- Freeform non-rectangular shapes such as diamonds.
 
 * Normalization
 

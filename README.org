@@ -49,7 +49,8 @@ sidebar.  From there:
 4. =RET= commits the shape
 5. =C-n= enters SELECT mode to pick a shape
 6. =RET= in SELECT locks the shape for editing
-7. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape, =>= / =<= to change width, =+= / =_= to change height, and =x= to cycle border style
+7. In SELECT, use =t= to mark multiple shapes or =T= to select all.
+8. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape or group, =>= / =<= to change width or edge length, =+= / =_= to change height or vertical edge length, =[= / =]= and ={= / =}= for left/top anchored resize, and =x= to cycle border or arrow style.
 
 See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
 
