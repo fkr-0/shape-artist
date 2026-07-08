@@ -2,6 +2,8 @@
 
 ;; Usage: emacs --batch -l tests/test-runner.el
 
+(setq load-prefer-newer t)
+
 (add-to-list 'load-path (expand-file-name ".." (file-name-directory
                                                  (or load-file-name
                                                      default-directory))))
@@ -30,6 +32,9 @@
                         (file-name-directory
                          (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-ui.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-guides.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-diagram-outline.el"

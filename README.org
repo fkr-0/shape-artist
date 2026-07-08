@@ -15,7 +15,8 @@ making it easy to draw boxes, lines, and labels in plain text.
 - Straight connector attachment and sticking during moves
 - Normalization: trim, pad, and box with title
 - Evil integration with custom states
-- Sidebar UI with live shape information
+- Sidebar UI with live shape and guide information
+- Buffer-local alignment guides, grid overlays, and guide snapping
 
 * Installation
 
@@ -54,6 +55,29 @@ sidebar.  From there:
 8. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape or group, =>= / =<= to change width or edge length, =+= / =_= to change height or vertical edge length, =[= / =]= and ={= / =}= for left/top anchored resize, and =x= to cycle border or arrow style.
 9. Press =?= for the mode-aware quick action menu, =o= for the outline tree,
    or =z= to center the parsed diagram.
+
+** Guides and grid overlays
+
+Guides are buffer-local alignment aids.  They are visible as overlays, listed in
+the sidebar, and never modify the underlying ASCII diagram text.
+
+Common guide commands are available from the =?= quick action menu:
+
+| Command | Purpose |
+|---------+---------|
+| =shape-artist-guide-create-horizontal= | Add a horizontal guide at the current row. |
+| =shape-artist-guide-create-vertical= | Add a vertical guide at the current column. |
+| =shape-artist-guide-delete-nearest= | Delete the guide nearest to point. |
+| =shape-artist-guide-clear-all= | Remove all guides and guide overlays. |
+| =shape-artist-guide-toggle-visibility= | Hide/show guide overlays while retaining guide state. |
+| =shape-artist-snap-toggle= | Enable/disable guide snapping. |
+| =shape-artist-grid-toggle= | Hide/show the lightweight grid overlay. |
+| =shape-artist-grid-set-size= | Change grid spacing. |
+
+When guide snapping is enabled, rectangle moves, group moves, and anchored
+rectangle resizes magnetize to nearby horizontal/vertical guides within
+=shape-artist-guide-snap-distance=.  Connector sticking still uses the existing
+shape move logic after the final snapped delta is chosen.
 
 See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
 

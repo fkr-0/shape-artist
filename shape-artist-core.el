@@ -775,8 +775,10 @@ TITLE is a string or nil.  When nil, skip the box."
   (when shape-artist--sidebar-timer
     (cancel-timer shape-artist--sidebar-timer)
     (setq shape-artist--sidebar-timer nil))
-  ;; Clear preview
+  ;; Clear preview and optional guide/grid overlays.
   (shape-artist--clear-preview-state)
+  (when (fboundp 'shape-artist-guides-clear-overlays)
+    (shape-artist-guides-clear-overlays))
   ;; Restore cursor
   (when shape-artist--saved-cursor-type
     (setq cursor-type shape-artist--saved-cursor-type))

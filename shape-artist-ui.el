@@ -11,6 +11,7 @@
 (require 'shape-artist-core)
 (require 'shape-artist-diagram-parse)
 (require 'shape-artist-shapes)
+(require 'shape-artist-guides)
 
 (declare-function shape-artist-diagram-outline-show "shape-artist-diagram-outline")
 
@@ -223,13 +224,13 @@ there are no known shapes."
   (format "=== Keys ===\n%s"
           (pcase shape-artist--mode
             ('move
-             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\nq        Quit\n")
+             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\nq        Quit\n")
             ('draw
-             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\n?        Quick actions\nz        Center diagram\nu        Undo\n")
+             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\n?        Quick actions\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Undo\n")
             ('select
-             "n/p      Next/prev shape\nt        Toggle candidate\nT        Select all\nc        Clear selection\ng        Re-parse\nRET      Lock/edit\nESC      Cancel\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\n")
+             "n/p      Next/prev shape\nt        Toggle candidate\nT        Select all\nc        Clear selection\ng        Re-parse\nRET      Lock/edit\nESC      Cancel\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\n")
             ('shape-edit
-             "H/J/K/L  Move shape/group\n>/<      Wider/narrower or edge +/-\n+/_      Taller/shorter or edge +/-\n[/]      Grow/shrink from left\n{/}      Grow/shrink from top\ne        Edit label\nm/r      Prompt move/resize\nx        Cycle style/arrow\ns        Prompt style\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\n")
+             "H/J/K/L  Move shape/group\n>/<      Wider/narrower or edge +/-\n+/_      Taller/shorter or edge +/-\n[/]      Grow/shrink from left\n{/}      Grow/shrink from top\ne        Edit label\nm/r      Prompt move/resize\nx        Cycle style/arrow\ns        Prompt style\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\n")
             (_ ""))))
 
 (defun shape-artist-ui-show-outline ()
@@ -249,6 +250,13 @@ there are no known shapes."
        ((all) "u" "Toggle sidebar" shape-artist-ui-toggle)
        ((all) "o" "Show outline tree" shape-artist-ui-show-outline)
        ((all) "z" "Center diagram" shape-artist-ui-center-diagram)
+       ((all) "G h" "Create horizontal guide" shape-artist-guide-create-horizontal)
+       ((all) "G v" "Create vertical guide" shape-artist-guide-create-vertical)
+       ((all) "G d" "Delete nearest guide" shape-artist-guide-delete-nearest)
+       ((all) "G c" "Clear all guides" shape-artist-guide-clear-all)
+       ((all) "G s" "Toggle guide snapping" shape-artist-snap-toggle)
+       ((all) "G V" "Toggle guide visibility" shape-artist-guide-toggle-visibility)
+       ((all) "G g" "Toggle grid overlay" shape-artist-grid-toggle)
        ((all) "g" "Parse / refresh shapes" shape-artist-shapes-parse)
        ((move) "SPC" "Start drawing from cursor" shape-artist-enter-draw-and-anchor)
        ((move) "d" "Enter draw mode" shape-artist-enter-draw)
@@ -300,6 +308,13 @@ there are no known shapes."
            ("o" "Outline tree" shape-artist-ui-show-outline)
            ("z" "Center diagram" shape-artist-ui-center-diagram)
            ("g" "Parse/refresh" shape-artist-shapes-parse)]
+          ["Guides"
+           ("H" "Horizontal" shape-artist-guide-create-horizontal)
+           ("V" "Vertical" shape-artist-guide-create-vertical)
+           ("D" "Delete nearest" shape-artist-guide-delete-nearest)
+           ("C" "Clear guides" shape-artist-guide-clear-all)
+           ("S" "Snap on/off" shape-artist-snap-toggle)
+           ("G" "Grid on/off" shape-artist-grid-toggle)]
           ["Move / Draw"
            ("SPC" "Draw from cursor" shape-artist-enter-draw-and-anchor)
            ("d" "Enter draw" shape-artist-enter-draw)
@@ -358,6 +373,8 @@ non-nil.  Otherwise use the dependency-free `completing-read' menu."
                          (shape-artist--ui-nonblank-section)
                          "\n"
                          (shape-artist--ui-layout-section)
+                         "\n"
+                         (shape-artist-guides-section-text)
                          "\n"
                          (shape-artist--ui-shapes-section)
                          "\n"

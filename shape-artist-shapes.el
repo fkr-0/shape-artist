@@ -9,6 +9,7 @@
 (require 'cl-lib)
 (require 'shape-artist-diagram-parse)
 (require 'shape-artist-core)
+(require 'shape-artist-guides)
 
 (defvar shape-artist--selected-shape-signatures nil)
 
@@ -421,6 +422,10 @@ translated so the connector remains parseable as one straight edge."
 
 Connected straight edges attached to moved rectangles are redrawn once, so a
 selected box group can keep its connectors attached while moving."
+  (pcase-let ((`(,snapped-dx ,snapped-dy ,_)
+               (shape-artist-guides-snap-group-move shapes dx dy)))
+    (setq dx snapped-dx
+          dy snapped-dy))
   (let* ((rects (cl-remove-if-not #'shape-artist-diagram-rectangle-p shapes))
          (selected-edges (cl-remove-if-not #'shape-artist-diagram-edge-p shapes))
          (rect-plans (mapcar (lambda (rect)
@@ -533,6 +538,10 @@ selected box group can keep its connectors attached while moving."
 
 (defun shape-artist-shapes--move-rectangle (shape dx dy)
   "Move rectangle SHAPE by DX and DY."
+  (pcase-let ((`(,snapped-dx ,snapped-dy ,_)
+               (shape-artist-guides-snap-rectangle-move shape dx dy)))
+    (setq dx snapped-dx
+          dy snapped-dy))
   (let* ((w (oref shape width))
          (h (oref shape height))
          (style (shape-artist-shapes-border-style shape))
@@ -616,6 +625,10 @@ selected box group can keep its connectors attached while moving."
            (old-y (oref shape y))
            (old-w (oref shape width))
            (old-h (oref shape height))
+           (snap (shape-artist-guides-snap-rectangle-resize
+                  shape x-anchor dx y-anchor dy))
+           (dx (nth 0 snap))
+           (dy (nth 1 snap))
            (style (shape-artist-shapes-border-style shape))
            (new-x (if (eq x-anchor 'left) (- old-x dx) old-x))
            (new-y (if (eq y-anchor 'top) (- old-y dy) old-y))

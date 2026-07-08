@@ -25,6 +25,7 @@
 ;;; Code:
 
 (require 'shape-artist-core)
+(require 'shape-artist-guides)
 (require 'shape-artist-ui)
 (require 'shape-artist-keys)
 (require 'shape-artist-select)
