@@ -23,7 +23,11 @@
            (shape-artist-guides-snap-enabled t)
            (shape-artist-grid-visible nil)
            (shape-artist-grid-snap-enabled nil)
-           (shape-artist-guides--last-snap-report nil))
+           (shape-artist-guides--last-snap-report nil)
+           (shape-artist-guides--suppress-snapping nil)
+           (shape-artist-guides--undo-stack nil)
+           (shape-artist-guides--redo-stack nil)
+           (shape-artist-guides--history-inhibit nil))
        (shape-artist-shapes-parse)
        ,@body)))
 
@@ -164,6 +168,201 @@
     (shape-artist-guide-create-vertical)
     (should (shape-artist-guides-find-nearest 'horizontal 1))
     (should (shape-artist-guides-find-nearest 'vertical 2))))
+
+
+(ert-deftest test-shape-artist-guides-grid-snap-rectangle-move ()
+  "Grid snapping moves rectangle top-left to nearest grid point."
+  (test-artist-with-guides-buffer
+      "     +---+\n     |   |\n     +---+"
+    (setq shape-artist-guides-snap-enabled nil)
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 4)
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      (shape-artist-shapes-move rect 0 0)
+      (let ((moved (test-shape-artist-guides--first-rect)))
+        (should (= (oref moved x) 4))
+        (should (plist-get shape-artist-guides--last-snap-report :grid-x))))))
+
+(ert-deftest test-shape-artist-guides-grid-snap-group-move ()
+  "Grid snapping applies one top-left correction to a shape group."
+  (test-artist-with-guides-buffer
+      "     +---+   +---+\n     | A |---| B |\n     +---+   +---+"
+    (setq shape-artist-guides-snap-enabled nil)
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 4)
+    (let* ((rects (test-shape-artist-guides--rects))
+           (x0 (mapcar (lambda (r) (oref r x)) rects)))
+      (shape-artist-shapes-move-group rects 0 0)
+      (let ((x1 (mapcar (lambda (r) (oref r x))
+                        (test-shape-artist-guides--rects))))
+        (should (equal x1 (mapcar (lambda (x) (- x 1)) x0)))))))
+
+(ert-deftest test-shape-artist-guides-grid-snap-resize-right-edge ()
+  "Grid snapping can resize a moving rectangle side to the grid."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (setq shape-artist-guides-snap-enabled nil)
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 4)
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      (shape-artist-shapes-resize-anchored rect 'right 3 'bottom 0)
+      (let ((resized (test-shape-artist-guides--first-rect)))
+        (should (= (+ (oref resized x) (oref resized width)) 8))))))
+
+(ert-deftest test-shape-artist-guides-grid-snap-edge-move ()
+  "Grid snapping applies to standalone edge movement."
+  (test-artist-with-guides-buffer
+      "     ----"
+    (setq shape-artist-guides-snap-enabled nil)
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 4)
+    (let ((edge (cl-find-if #'shape-artist-diagram-edge-p
+                            shape-artist--last-shapes-list)))
+      (shape-artist-shapes-move edge 0 0)
+      (let ((moved (cl-find-if #'shape-artist-diagram-edge-p
+                               shape-artist--last-shapes-list)))
+        (should (= (oref moved x) 4))))))
+
+(ert-deftest test-shape-artist-guides-guide-beats-grid-on-same-axis ()
+  "Guide snapping has priority over grid snapping per axis."
+  (test-artist-with-guides-buffer
+      "     +---+\n     |   |\n     +---+"
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 4)
+    (shape-artist-guides-add 'vertical 7 nil 'manual)
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      (shape-artist-shapes-move rect 0 0)
+      (let ((moved (test-shape-artist-guides--first-rect)))
+        (should (= (oref moved x) 7))
+        (should (plist-get shape-artist-guides--last-snap-report :x))
+        (should-not (plist-get shape-artist-guides--last-snap-report :grid-x))))))
+
+(ert-deftest test-shape-artist-guides-selection-to-guide-adopts-shape ()
+  "Selection-derived guides adopt the source shape signatures."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (setq shape-artist--locked-shape (test-shape-artist-guides--first-rect))
+    (shape-artist-guide-selection-to-guide)
+    (should (= (length shape-artist-guides--guides) 4))
+    (dolist (guide shape-artist-guides--guides)
+      (should (= (length (shape-artist-guide-adopted-shape-signatures guide)) 1)))
+    (should (string-match-p "adopted=1" (shape-artist-guides-section-text)))))
+
+(ert-deftest test-shape-artist-guides-moving-guide-drags-adopted-shape ()
+  "Moving a guide drags adopted shapes without recursively snapping them."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (setq shape-artist-grid-snap-enabled t)
+    (setq shape-artist-grid-size 8)
+    (let* ((rect (test-shape-artist-guides--first-rect))
+           (guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      (shape-artist-guides--adopt-signatures
+       guide (list (shape-artist-shapes-signature rect)))
+      (shape-artist-guide-move (shape-artist-guide-id guide) 3)
+      (let ((moved (test-shape-artist-guides--first-rect)))
+        (should (= (oref moved x) 3))
+        (should (= (shape-artist-guide-position guide) 3))
+        (should (= (length (shape-artist-guide-adopted-shape-signatures guide))
+                   1))))))
+
+
+(ert-deftest test-shape-artist-guides-property-commands ()
+  "Guide property commands update label, snap distance, and visibility."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 nil 'manual)))
+      (shape-artist-guide-set-label (shape-artist-guide-id guide) "main")
+      (shape-artist-guide-set-snap-distance (shape-artist-guide-id guide) 5)
+      (shape-artist-guide-toggle-nearest-visibility (shape-artist-guide-id guide))
+      (should (equal (shape-artist-guide-label guide) "main"))
+      (should (= (shape-artist-guide-snap-distance guide) 5))
+      (should-not (shape-artist-guide-visible guide))
+      (should (string-match-p "hidden main" (shape-artist-guides-section-text))))))
+
+(ert-deftest test-shape-artist-guides-undo-redo-guide-state ()
+  "Guide undo/redo restores non-text guide state."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 nil 'manual)))
+      (shape-artist-guide-set-label (shape-artist-guide-id guide) "main")
+      (shape-artist-guides-undo)
+      (let ((restored (shape-artist-guides--guide-at-id
+                       (shape-artist-guide-id guide))))
+        (should restored)
+        (should-not (shape-artist-guide-label restored)))
+      (shape-artist-guides-redo)
+      (let ((restored (shape-artist-guides--guide-at-id
+                       (shape-artist-guide-id guide))))
+        (should (equal (shape-artist-guide-label restored) "main"))))))
+
+(ert-deftest test-shape-artist-guides-undo-redo-adopted-guide-move ()
+  "Guide undo/redo moves adopted shapes back and forth with the guide."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let* ((rect (test-shape-artist-guides--first-rect))
+           (guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      (shape-artist-guides--adopt-signatures
+       guide (list (shape-artist-shapes-signature rect)))
+      (shape-artist-guide-move (shape-artist-guide-id guide) 3)
+      (should (= (oref (test-shape-artist-guides--first-rect) x) 3))
+      (shape-artist-guides-undo)
+      (should (= (oref (test-shape-artist-guides--first-rect) x) 0))
+      (should (= (shape-artist-guide-position
+                  (shape-artist-guides--guide-at-id
+                   (shape-artist-guide-id guide)))
+                 0))
+      (shape-artist-guides-redo)
+      (should (= (oref (test-shape-artist-guides--first-rect) x) 3))
+      (should (= (shape-artist-guide-position
+                  (shape-artist-guides--guide-at-id
+                   (shape-artist-guide-id guide)))
+                 3)))))
+
+(ert-deftest test-shape-artist-guides-save-load-roundtrip ()
+  "Guide sidecar persistence preserves IDs, settings, and adoptions."
+  (let* ((dir (make-temp-file "shape-artist-guides" t))
+         (default-directory dir)
+         (file (expand-file-name "diagram.txt" dir))
+         (shape-artist-guides-persistence-file ".shape-artist/guides.el"))
+    (write-region "+---+\n|   |\n+---+" nil file nil 'silent)
+    (let ((buffer (find-file-noselect file)))
+      (unwind-protect
+          (with-current-buffer buffer
+            (let ((shape-artist--update-sidebar-fn nil))
+              (shape-artist-shapes-parse)
+              (let* ((rect (test-shape-artist-guides--first-rect))
+                     (guide (shape-artist-guides-add 'vertical 0 "left" 'manual)))
+                (shape-artist-guides--adopt-signatures
+                 guide (list (shape-artist-shapes-signature rect)))
+                (setf (shape-artist-guide-snap-distance guide) 7)
+                (setq shape-artist-grid-size 6)
+                (setq shape-artist-grid-snap-enabled t)
+                (shape-artist-guides-save)
+                (shape-artist-guide-clear-all)
+                (setq shape-artist-grid-size 4)
+                (setq shape-artist-grid-snap-enabled nil)
+                (shape-artist-guides-load)
+                (should (= (length shape-artist-guides--guides) 1))
+                (let ((loaded (car shape-artist-guides--guides)))
+                  (should (= (shape-artist-guide-id loaded)
+                             (shape-artist-guide-id guide)))
+                  (should (equal (shape-artist-guide-label loaded) "left"))
+                  (should (= (shape-artist-guide-snap-distance loaded) 7))
+                  (should (= shape-artist-grid-size 6))
+                  (should shape-artist-grid-snap-enabled)
+                  (should (= (length
+                              (shape-artist-guide-adopted-shape-signatures
+                               loaded))
+                             1)))
+                (should (file-exists-p
+                         (expand-file-name ".shape-artist/guides.el" dir))))))
+        (kill-buffer buffer)))))
+
+(ert-deftest test-shape-artist-guides-save-requires-file-backed-buffer ()
+  "Guide persistence refuses anonymous buffers."
+  (test-artist-with-guides-buffer
+      "abc"
+    (should-error (shape-artist-guides-save) :type 'user-error)))
 
 (provide 'test-shape-artist-guides)
 ;;; test-shape-artist-guides.el ends here

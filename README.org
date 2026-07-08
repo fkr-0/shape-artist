@@ -69,15 +69,41 @@ Common guide commands are available from the =?= quick action menu:
 | =shape-artist-guide-create-vertical= | Add a vertical guide at the current column. |
 | =shape-artist-guide-delete-nearest= | Delete the guide nearest to point. |
 | =shape-artist-guide-clear-all= | Remove all guides and guide overlays. |
-| =shape-artist-guide-toggle-visibility= | Hide/show guide overlays while retaining guide state. |
+| =shape-artist-guide-toggle-visibility= | Hide/show all guide overlays while retaining guide state. |
+| =shape-artist-guide-toggle-nearest-visibility= | Hide/show one guide. |
+| =shape-artist-guide-set-label= | Set or clear a guide label. |
+| =shape-artist-guide-set-snap-distance= | Override one guide's snap distance. |
+| =shape-artist-guide-edit-properties= | Edit position, label, visibility, and snap distance. |
+| =shape-artist-guide-adopt-selection-nearest= | Attach selected/locked shapes to the nearest guide. |
+| =shape-artist-guide-clear-adoptions= | Clear guide-to-shape adoption links. |
+| =shape-artist-guides-save= | Save guide state to =.shape-artist/guides.el=. |
+| =shape-artist-guides-load= | Load guide state for the current file. |
+| =shape-artist-guides-delete-saved= | Remove saved guide state for the current file. |
+| =shape-artist-guides-undo= | Undo a non-text guide-state change. |
+| =shape-artist-guides-redo= | Redo a guide-state change. |
 | =shape-artist-snap-toggle= | Enable/disable guide snapping. |
 | =shape-artist-grid-toggle= | Hide/show the lightweight grid overlay. |
+| =shape-artist-grid-snap-toggle= | Enable/disable snap-to-grid. |
 | =shape-artist-grid-set-size= | Change grid spacing. |
 
-When guide snapping is enabled, rectangle moves, group moves, and anchored
-rectangle resizes magnetize to nearby horizontal/vertical guides within
-=shape-artist-guide-snap-distance=.  Connector sticking still uses the existing
-shape move logic after the final snapped delta is chosen.
+When guide snapping is enabled, rectangle moves, edge moves, group moves, and
+anchored rectangle resizes magnetize to nearby horizontal/vertical guides within
+=shape-artist-guide-snap-distance=.  If grid snapping is enabled and no guide
+wins on an axis, the same operation snaps to the configured grid.  Connector
+sticking still uses the existing shape move logic after the final snapped delta
+is chosen.
+
+Guides can also adopt selected shapes.  Moving an adopted guide drags those
+shapes along the guide axis while suppressing recursive guide/grid snapping, so
+manual guide moves remain exact and predictable.  Guide-only operations maintain
+a small undo/redo stack because overlays, labels, snap distances, and adoption
+links are metadata rather than text edits.
+
+For file-backed buffers, =shape-artist-guides-save= stores guide IDs, labels,
+visibility, per-guide snap distances, grid settings, and adoption signatures in
+=.shape-artist/guides.el= under the current project root.  The sidecar maps
+project-relative file names to guide snapshots, so the diagram text stays clean.
+Use =shape-artist-guides-load= to restore the current file's guides.
 
 See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
 

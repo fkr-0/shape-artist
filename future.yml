@@ -1,0 +1,823 @@
+version: 1
+project: shape-artist
+status: draft-roadmap
+purpose: >-
+  Exhaustive future-feature roadmap mined from trunk/ and the nested
+  trunk/artist-assist/ prototype checkout.  Every useful trunk idea is mapped
+  either to current implementation coverage or to a future feature below.
+
+scope:
+  current_package: Shape Artist Emacs Lisp package
+  trunk_sources_reviewed:
+    top_level:
+      - trunk/aa-avl-tree.el
+      - trunk/aa-guide.el
+      - trunk/aa-hydra.el
+      - trunk/aa-index.el
+      - trunk/aa-layout.el
+      - trunk/aa-metadata.el
+      - trunk/aa-op.el
+      - trunk/aa-transient.el
+      - trunk/aa-tree-adapter.el
+      - trunk/aa-undo.el
+      - trunk/treemacs-extensions.el
+      - trunk/treespec.md
+    nested_artist_assist:
+      - trunk/artist-assist/README.md
+      - trunk/artist-assist/artist-assist.el
+      - trunk/artist-assist/aa-annot.el
+      - trunk/artist-assist/aa-export.el
+      - trunk/artist-assist/aa-guide.el
+      - trunk/artist-assist/aa-index.el
+      - trunk/artist-assist/aa-layout.el
+      - trunk/artist-assist/aa-metadata.el
+      - trunk/artist-assist/aa-op.el
+      - trunk/artist-assist/aa-transient.el
+      - trunk/artist-assist/aa-tree-adapter.el
+      - trunk/artist-assist/aa-undo.el
+      - trunk/artist-assist/evil-aa.el
+      - trunk/artist-assist/flo-artist/*.el
+      - trunk/artist-assist/docs/**/*.md
+      - trunk/artist-assist/ext/*.md
+      - trunk/artist-assist/hydra_transient.md
+      - trunk/artist-assist/demos/state_machine.txt
+  non_feature_inputs:
+    - "*.elc files are build byproducts."
+    - "trunk/artist-assist/.git and editor/agent config dirs are tool state."
+
+current_coverage:
+  implemented:
+    - id: core-modal-draw-select-edit
+      covers: [MOVE, DRAW, SELECT, SHAPE-EDIT, Evil-compatible dispatch, non-Evil dispatch]
+      files: [shape-artist-core.el, shape-artist-keys.el, shape-artist-select.el, shape-artist-shape-edit.el]
+    - id: parser-tree-outline-sidebar
+      covers: [rectangle parsing, edge parsing, label parsing, hierarchy, sidebar tree, outline buffer]
+      files: [shape-artist-diagram-parse.el, shape-artist-diagram-outline.el, shape-artist-ui.el]
+    - id: rectangle-edge-editing
+      covers: [move, resize, anchored resize, style cycle, arrows, multi-select, grouped move]
+      files: [shape-artist-shapes.el, shape-artist-shape-edit.el]
+    - id: straight-edge-sticking
+      covers: [endpoint attachment metadata, straight-edge sticking on rectangle/group move]
+      files: [shape-artist-diagram-parse.el, shape-artist-shapes.el]
+    - id: discoverability-baseline
+      covers:
+        - sidebar key help
+        - "? quick menu"
+        - optional Transient frontend
+        - completing-read fallback
+        - "o outline"
+      files: [shape-artist-ui.el, shape-artist-keys.el]
+    - id: layout-bounds-centering
+      covers:
+        - sidebar bounds
+        - sidebar size/count
+        - "z center command"
+      files: [shape-artist-ui.el]
+    - id: guides-grid-snapping-mvp
+      covers:
+        - buffer-local horizontal/vertical guides
+        - guide creation/deletion/visibility commands
+        - guide overlays and grid overlays that do not mutate diagram text
+        - sidebar guide section and quick menu entries
+        - rectangle move snapping
+        - edge move snapping
+        - group move snapping
+        - anchored rectangle resize snapping
+        - snap-to-grid for rectangle, edge, group, and resize operations
+        - guide adoption by shape signature
+        - guide moves drag adopted shapes without recursive snapping
+        - project-local guide persistence sidecar
+        - guide undo/redo for non-text guide metadata
+        - per-guide property editing for labels, visibility, and snap distance
+      files: [shape-artist-guides.el, shape-artist-shapes.el, shape-artist-ui.el]
+  build_policy:
+    trunk_status: reference-only
+    reason: trunk prototypes intentionally reference incomplete aa-* modules and old artist-assist package names
+    exclusion_files: [.elpaignore, Eldev]
+
+trunk_coverage_matrix:
+  aa-avl-tree:
+    useful_features: [spatial-index, large-diagram-hit-testing]
+    covered_by: spatial-index-and-performance
+  aa-guide:
+    useful_features: [guides, guide-overlays, guide-snapping, guide-adoption, guide-move-shapes]
+    covered_by: guides-grid-snapping
+  aa-layout:
+    useful_features: [diagram-bounds, smart-centering, width-gauge]
+    partly_implemented_by: layout-bounds-centering
+    remaining_covered_by: normalization-cleanup-tools
+  aa-hydra-and-aa-transient:
+    useful_features: [sticky-palettes, property-panel, guide-panel, export-panel, history-panel, transient-posframe]
+    partly_implemented_by: discoverability-baseline
+    remaining_covered_by: advanced-discoverability-hud
+  aa-index-aa-metadata-aa-tree-adapter-treemacs:
+    useful_features: [buffer-index, project-index, metadata, groups, tags, filters, external-tree-ui]
+    covered_by: [diagram-metadata-and-stable-identity, project-index-and-tree-adapter, optional-treemacs-integration]
+  aa-op-aa-undo:
+    useful_features: [operation-dsl, semantic-undo, branch-history, replay, branch-export, wizard-ops]
+    covered_by: [semantic-operation-model, branchable-history-and-replay, diagram-wizard-and-templates]
+  aa-export:
+    useful_features: [Mermaid, PlantUML, SVG, clipboard, buffer, file, embedded-roundtrip-ids]
+    covered_by: export-import-roundtrip
+  aa-annot:
+    useful_features: [anchors, semantic-zones, side-labels, tooltips, posframe, anchor-cycling]
+    covered_by: anchors-annotations-and-semantic-zones
+  evil-aa:
+    useful_features: [text-objects, Evil operators, shape-wise motions, open-shape-above-below]
+    covered_by: evil-text-objects-and-operators
+  flo-artist-core-and-shapes:
+    useful_features: [square, polyline, circle, ellipse, erase-rect, flood-fill, normalize-box, status-hud, rich-box-text]
+    covered_by: [additional-shape-primitives, normalization-cleanup-tools, text-editing-and-box-content]
+  docs-ai-index:
+    useful_features: [AI-indexed-docs, module-guides, navigation-guide, frontmatter, context-markers]
+    covered_by: documentation-and-agent-index
+  treespecs:
+    useful_features: [project-tree, groups, filters, actions, export, diff, preview]
+    covered_by: [project-index-and-tree-adapter, optional-treemacs-integration, diagram-diff-and-versioning, import-rasterize-preview-minimap]
+
+features:
+  - id: diagram-metadata-and-stable-identity
+    title: Stable shape and diagram identity with metadata records
+    priority: high
+    trunk_sources: [artist-assist.el, aa-metadata.el, tree-ui-spec.md, ext/treespec.md]
+    current_coverage: geometry signatures only; no stable IDs or persisted metadata
+    why: >-
+      Required by anchors, semantic zones, operation history, export round-trip,
+      project index, Treemacs nodes, and stable group selection.
+    prerequisites: [parser-tree-outline-sidebar]
+    design:
+      diagram_record:
+        fields: [id, name, layout, tags, group, file, position, bounds, shapes, edges, description, thumbnail]
+      shape_record:
+        fields: [id, kind, label, geometry, style, properties, source_signature]
+      edge_record:
+        fields: [id, kind, source_shape_id, target_shape_id, attachment_start, attachment_end, route_points, labels, properties]
+      persistence_modes:
+        text_properties:
+          role: optional migration/import path from trunk prototype
+          caveat: may not survive all plain-text workflows
+        sidecar:
+          path: .shape-artist/project-meta.yml
+          role: project-level index, tags, groups, export metadata
+        inline_comments:
+          role: round-trip export/import IDs
+          caveat: must avoid polluting simple diagrams by default
+    implementation_slices:
+      - name: buffer-local metadata structs
+        files_add: [shape-artist-metadata.el, tests/test-shape-artist-metadata.el]
+        tasks:
+          - define diagram/shape/edge metadata structs or EIEIO classes
+          - implement metadata-from-parse-result
+          - generate ephemeral IDs when no persisted ID exists
+          - reconcile IDs across reparse using metadata ID first, geometry signature second
+        tests:
+          - two boxes plus connector produces one diagram, two shapes, one edge
+          - IDs are unique within buffer
+          - unchanged reparse preserves IDs
+          - deleting shape removes or tombstones stale metadata
+      - name: sidecar metadata I/O
+        files_add: [shape-artist-project-meta.el, tests/test-shape-artist-project-meta.el]
+        tasks:
+          - define YAML-friendly alist/plist representation
+          - write simple serializer or choose optional YAML dependency later
+          - implement load/save/validate with atomic write
+          - add explicit save command and dirty flag
+        tests:
+          - round-trip groups, tags, layouts, shapes, edges
+          - malformed file reports validation errors without mutation
+          - save creates .shape-artist directory
+      - name: migration from trunk-style markers
+        tasks:
+          - detect aa-* text properties if present
+          - import embedded round-trip comments from Mermaid/PlantUML exports
+          - provide stamp-buffer command to materialize IDs
+        tests:
+          - buffer with trunk text properties reconstructs metadata
+          - stamping then reparsing preserves IDs
+    correctness:
+      invariants:
+        - metadata is never required for basic parsing/editing
+        - ID stability is best-effort until sidecar/inline metadata exists
+        - sidecar writes must not leave partial files
+
+  - id: semantic-operation-model
+    title: Semantic operation model for edit/apply/replay
+    priority: high
+    trunk_sources: [aa-op.el, aa-undo.el]
+    current_coverage: direct buffer rewrites only
+    prerequisites: [diagram-metadata-and-stable-identity]
+    design:
+      operation_types:
+        - add-shape
+        - delete-shape
+        - move-shape
+        - move-group
+        - resize-shape
+        - set-style
+        - edit-label
+        - add-edge
+        - reroute-edge
+        - attach-edge
+        - set-metadata
+        - add-anchor
+        - set-guide
+      record_fields: [id, type, timestamp, actor, target_ids, before, after, description, source_command]
+      apply_contract:
+        - validate current parse/metadata
+        - compute buffer patch plan
+        - apply atomically
+        - reparse
+        - reconcile metadata
+        - run after-op hook once
+      hooks: [shape-artist-before-op-hook, shape-artist-after-op-hook, shape-artist-op-failed-hook]
+    implementation_slices:
+      - name: pure operation structs and validation
+        files_add: [shape-artist-ops.el, tests/test-shape-artist-ops.el]
+        tests:
+          - stale target rejected
+          - group operation rejects duplicate IDs
+          - descriptions are stable and readable
+      - name: wrap existing edit commands
+        tasks:
+          - route move/resize/style/label/group move through executor
+          - preserve command names and interactive behavior
+        tests:
+          - existing full suite remains green
+          - hook captures operations in order
+          - failed operation leaves buffer unchanged
+      - name: operation serialization
+        tasks:
+          - op-to-plist and plist-to-op
+          - save/load operation log
+          - replay into fixture buffer
+        tests:
+          - round-trip every operation type
+          - malformed op log fails before mutating destination
+
+  - id: branchable-history-and-replay
+    title: Semantic undo/redo tree, replay, and branch export
+    priority: medium
+    trunk_sources: [aa-undo.el]
+    current_coverage: Emacs buffer undo only
+    prerequisites: [semantic-operation-model]
+    design:
+      history_node_fields: [op_id, parent_id, children_ids, operation, timestamp, branch_label]
+      commands:
+        - shape-artist-history-undo
+        - shape-artist-history-redo
+        - shape-artist-history-jump
+        - shape-artist-history-show-tree
+        - shape-artist-history-export-branch
+        - shape-artist-history-replay-file
+      branch_semantics:
+        - undo moves current pointer to parent and applies inverse op
+        - operation after undo creates a child branch
+        - redo prompts if multiple children exist
+    implementation_slices:
+      - name: linear semantic undo/redo
+        tests:
+          - move resize style label undo/redo exact buffer strings
+          - group move undo restores attached connectors
+      - name: branch tree UI
+        tests:
+          - undo then new op creates second branch
+          - jumping branch changes buffer to expected snapshot
+      - name: export/replay branch
+        tests:
+          - exported branch replay matches final buffer
+          - invalid branch log fails with clear error
+
+  - id: guides-grid-snapping
+    title: Guides, grid visibility, snapping, and guide adoption
+    priority: high
+    trunk_sources: [aa-guide.el, artist-assist.el, aa-transient.el]
+    current_coverage: complete for buffer-local and project-sidecar workflow
+    status: implemented
+    prerequisites:
+      implemented_without:
+        - semantic-operation-model
+        - diagram-metadata-and-stable-identity
+      later_optional_upgrade_paths:
+        - migrate persisted adoption signatures to stable shape IDs after diagram-metadata-and-stable-identity
+        - mirror guide changes into semantic-operation-model after operation history lands
+    design:
+      guide_record_fields: [id, orientation, position, label, visible, snap_distance, adopted_shape_signatures, source]
+      commands:
+        - shape-artist-guide-create-horizontal
+        - shape-artist-guide-create-vertical
+        - shape-artist-guide-delete-nearest
+        - shape-artist-guide-clear-all
+        - shape-artist-guide-toggle-visibility
+        - shape-artist-guide-move
+        - shape-artist-guide-selection-to-guide
+        - shape-artist-grid-toggle
+        - shape-artist-grid-set-size
+        - shape-artist-grid-snap-toggle
+        - shape-artist-snap-toggle
+        - shape-artist-guide-adopt-selection-nearest
+        - shape-artist-guide-clear-adoptions
+        - shape-artist-guide-set-label
+        - shape-artist-guide-set-snap-distance
+        - shape-artist-guide-toggle-nearest-visibility
+        - shape-artist-guide-edit-properties
+        - shape-artist-guides-save
+        - shape-artist-guides-load
+        - shape-artist-guides-delete-saved
+        - shape-artist-guides-undo
+        - shape-artist-guides-redo
+      snapping_rules:
+        - snap rectangle left/right edges to vertical guides
+        - snap rectangle top/bottom edges to horizontal guides
+        - preserve size on move snapping
+        - move adopted shapes when guide moves
+        - never snap recursively inside a guide-originated op
+        - guide snapping wins over grid snapping on each axis
+        - snap-to-grid fills in when no guide snaps that axis
+    implementation_slices:
+      - name: pure guide model and snap helpers
+        status: implemented
+        files: [shape-artist-guides.el, tests/test-shape-artist-guides.el]
+        tests:
+          - within distance snaps by expected delta
+          - outside distance does not snap
+          - edge snap preserves width/height
+      - name: integrate with move/resize operations
+        status: implemented
+        files: [shape-artist-shapes.el, tests/test-shape-artist-guides.el]
+        tests:
+          - move near guide snaps buffer output
+          - edge move snaps to grid
+          - group move snaps group once
+          - attached connector stays attached after snap
+          - resize only snaps axes being resized
+      - name: guide overlays and sidebar section
+        status: implemented
+        files: [shape-artist-guides.el, shape-artist-ui.el]
+        tests:
+          - guide appears in sidebar
+          - visibility toggle creates/removes overlays
+          - clear removes all guide overlays
+          - adoption count appears in sidebar
+      - name: grid overlay and snap-to-grid
+        status: implemented
+        tests:
+          - overlay does not edit buffer text
+          - snap rounds top-left to configured grid size
+          - guides beat grid on same axis
+      - name: guide adoption and guide-driven movement
+        status: implemented
+        tests:
+          - selection-to-guide adopts source shape signatures
+          - moving adopted guide drags resolved shapes
+          - guide-originated movement suppresses recursive snapping
+      - name: persisted guide IDs and adoption links
+        status: implemented
+        files: [shape-artist-guides.el, tests/test-shape-artist-guides.el]
+        tests:
+          - saved guide adoptions survive load and reparse
+          - anonymous buffers report a clear persistence error
+      - name: guide history and property editing
+        status: implemented
+        files: [shape-artist-guides.el, shape-artist-ui.el, tests/test-shape-artist-guides.el]
+        tests:
+          - label, snap distance, and single-guide visibility edits update sidebar state
+          - undo/redo restores guide metadata
+          - undo/redo moves adopted shapes back and forth with guide positions
+
+  - id: advanced-routing-and-connectors
+    title: Orthogonal routing, bendpoints, and stronger connector semantics
+    priority: high
+    trunk_sources: [README.md, flo-artist-shapes.el, ext/treespec.md]
+    current_coverage: straight attached edges only
+    prerequisites: [diagram-metadata-and-stable-identity, semantic-operation-model]
+    design:
+      connector_model:
+        straight_segment: existing parsed edge
+        polyline_route: ordered orthogonal points
+        endpoint: shape ID, side, offset, detached/attached state
+        label: text plus route-relative position
+      commands:
+        - shape-artist-edge-connect-selected
+        - shape-artist-edge-reroute-orthogonal
+        - shape-artist-edge-add-bendpoint
+        - shape-artist-edge-remove-bendpoint
+        - shape-artist-edge-flip-direction
+        - shape-artist-edge-attach-nearest
+        - shape-artist-edge-detach-endpoint
+      routing_policy:
+        - avoid rectangle interiors
+        - preserve existing bendpoints where possible
+        - deterministic tie-breaks
+        - group move transforms a connector only once
+    implementation_slices:
+      - name: route metadata and parser grouping
+        tests:
+          - L-shaped connector parses as one route
+          - arrow metadata survives route parse
+          - unsupported junction warns rather than corrupts
+      - name: manual bendpoint/segment editing
+        tests:
+          - moving bendpoint redraws adjacent segments
+          - route remains parseable after edit
+      - name: preserve route intent on box move
+        tests:
+          - moving one attached box inserts elbow if needed
+          - moving both boxes as group shifts whole route unchanged
+      - name: simple Manhattan router
+        tests:
+          - route around obstacle
+          - no-route leaves buffer unchanged
+          - tie-breaking deterministic
+
+  - id: additional-shape-primitives
+    title: More shape primitives and replacement
+    priority: medium
+    trunk_sources: [README.md, artist-assist.el, flo-artist-core.el, flo-artist-shapes.el, aa-hydra.el]
+    current_coverage: rectangles and straight edges only
+    prerequisites: [semantic-operation-model]
+    target_shapes:
+      - diamond
+      - rounded-rectangle
+      - cloud
+      - ellipse-or-circle-approximation
+      - swimlane
+      - square-constrained-rectangle
+      - polyline
+      - erase-rectangle
+      - flood-fill
+      - text-overwrite
+    implementation_slices:
+      - name: shape kind registry
+        tests:
+          - rectangle behavior unchanged through registry
+          - unsupported kind gives helpful user-error
+      - name: square and rounded rectangle
+        tests:
+          - square command constrains bounds
+          - rounded rectangle parse preserves kind
+      - name: diamond
+        tests:
+          - draw/parse diamond round-trip
+          - rectangle-to-diamond replacement preserves label where possible
+      - name: swimlane
+        tests:
+          - parse three lanes
+          - add/remove lane preserves existing content
+      - name: text-buffer-native artist ops
+        tests:
+          - erase region clears expected cells
+          - flood fill does not leak outside border
+          - text-overwrite preserves rectangular grid
+
+  - id: anchors-annotations-and-semantic-zones
+    title: Anchors, annotations, side labels, tooltips, and rectangle zones
+    priority: medium
+    trunk_sources: [aa-annot.el, aa-transient.el]
+    current_coverage: basic rectangle labels
+    prerequisites: [diagram-metadata-and-stable-identity, semantic-operation-model]
+    design:
+      anchor_fields: [id, shape_id, side, offset, text, render_type, face]
+      render_types: [inline-overlay, tooltip-posframe, sidebar-only]
+      zones: [title, body, left-label, right-label, footer, stereotype-row]
+      commands:
+        - shape-artist-anchor-add
+        - shape-artist-anchor-remove
+        - shape-artist-anchor-cycle
+        - shape-artist-anchor-edit-text
+        - shape-artist-zone-edit-title
+        - shape-artist-zone-edit-body
+        - shape-artist-zone-edit-footer
+    implementation_slices:
+      - name: semantic zones inside rectangles
+        tests:
+          - title edit only changes title row
+          - footer edit only changes footer row
+          - long title follows expand/truncate policy
+      - name: inline anchors
+        tests:
+          - side/offset coordinate calculator is correct
+          - moving shape refreshes anchor overlay
+          - deleting shape clears anchors
+      - name: tooltip/posframe annotations
+        tests:
+          - posframe absent uses fallback
+          - no anchor at point reports clear message
+
+  - id: export-import-roundtrip
+    title: Mermaid, PlantUML, SVG export and simple import
+    priority: high
+    trunk_sources: [aa-export.el, README.md]
+    current_coverage: none
+    prerequisites: [diagram-metadata-and-stable-identity, project-index-and-tree-adapter]
+    design:
+      formats: [mermaid, plantuml, svg, ascii-region, future-png]
+      commands:
+        - shape-artist-export-popup
+        - shape-artist-export-mermaid-to-buffer
+        - shape-artist-export-mermaid-to-clipboard
+        - shape-artist-export-plantuml-to-buffer
+        - shape-artist-export-svg-to-file
+        - shape-artist-import-mermaid-basic
+      mapping:
+        rectangle: Mermaid node / PlantUML rectangle or object
+        diamond: Mermaid decision node when implemented
+        edge: Mermaid/PlantUML arrow with optional label
+        swimlane: Mermaid subgraph or PlantUML partition when implemented
+    implementation_slices:
+      - name: pure Mermaid exporter
+        tests:
+          - two boxes plus arrow exports nodes and edge
+          - labels are escaped
+          - empty diagram behavior deterministic
+      - name: PlantUML text exporter
+        tests:
+          - output has @startuml and @enduml
+          - edge label appears once
+      - name: monospaced SVG exporter
+        tests:
+          - viewBox matches dimensions
+          - XML escaping correct
+      - name: basic Mermaid import
+        tests:
+          - simple exported graph imports to equivalent shape count
+          - unsupported Mermaid gives warning and no corruption
+
+  - id: project-index-and-tree-adapter
+    title: Buffer/project index, generic tree nodes, grouping, tags, and filters
+    priority: medium
+    trunk_sources: [aa-index.el, aa-tree-adapter.el, treespec.md, tree-ui-spec.md]
+    current_coverage: buffer-local sidebar/outline only
+    prerequisites: [diagram-metadata-and-stable-identity]
+    design:
+      index_layers: [buffer-index, project-index, global-index]
+      tree_node_fields: [key, label, type, data, children_provider, actions, icon_hint]
+      scopes: [current-buffer, current-project, all-open-buffers]
+      filters: [tag, group, layout, file, shape-kind, text-search]
+    implementation_slices:
+      - name: generic tree adapter for current buffer
+        tests:
+          - diagram maps to shape/edge children
+          - selected/locked markers render from generic node data
+      - name: project index from sidecar metadata
+        tests:
+          - diagrams index by tag and group
+          - missing sidecar clears project index
+      - name: grouping and filtering
+        tests:
+          - group paths A/B and A/C share parent A
+          - tag filter returns only matching diagrams
+          - sort order deterministic
+
+  - id: optional-treemacs-integration
+    title: Optional Treemacs integration
+    priority: low
+    trunk_sources: [treemacs-extensions.el, tree-ui-spec.md]
+    current_coverage: built-in outline only
+    prerequisites: [project-index-and-tree-adapter]
+    design:
+      dependency_policy:
+        - no hard Treemacs dependency
+        - separate shape-artist-treemacs.el module
+        - runtime require nil t
+      node_actions: [jump-to-diagram, jump-to-shape, export-diagram, edit-metadata, filter-by-tag, toggle-guides]
+    implementation_slices:
+      - name: optional module skeleton
+        tests:
+          - main package loads without Treemacs
+          - setup without Treemacs displays helpful message
+      - name: navigation actions
+        tests:
+          - temp file action opens file and moves point
+      - name: refresh notifications
+        tests:
+          - mocked Treemacs API sees refresh once per op batch
+
+  - id: advanced-discoverability-hud
+    title: Sticky HUD, Transient/Hydra-style UX, which-key, posframe, and tutorial
+    priority: medium
+    trunk_sources: [aa-hydra.el, aa-transient.el, hydra_transient.md, flo-artist-hud.el]
+    current_coverage: "? menu with optional Transient fallback"
+    prerequisites: []
+    design:
+      ui_layers: [completing-read, optional-transient, sticky-transient, echo-hints, which-key, tutorial]
+      panels: [move, draw, select, shape-edit, guides, export, history, properties]
+      optional_dependencies: [transient, transient-posframe, which-key, hydra]
+    implementation_slices:
+      - name: sticky transient suffixes
+        tests:
+          - transient only defined when available
+          - package-lint remains clean without dependency
+      - name: mode-specific transient panels
+        tests:
+          - "? dispatches to mode panel"
+          - select panel excludes draw-only actions
+      - name: which-key and echo micro-hints
+        tests:
+          - hint string changes by mode
+          - which-key absent does not affect load
+      - name: interactive tutorial
+        tests:
+          - checkpoint validator recognizes completed fixture
+          - failed checkpoint gives actionable message
+
+  - id: evil-text-objects-and-operators
+    title: Evil text objects, operators, and graph motions
+    priority: medium
+    trunk_sources: [evil-aa.el, README.md]
+    current_coverage: Evil states/keymaps only
+    prerequisites: [diagram-metadata-and-stable-identity]
+    design:
+      text_objects: [av-around-shape, iv-inner-shape, ae-around-edge, ie-edge-label, az-around-zone, iz-inner-zone]
+      operators: [delete-shape, yank-shape, change-label, duplicate-shape, shift-shape]
+      motions: [next-shape, previous-shape, parent-shape, child-shape, connected-neighbor]
+    implementation_slices:
+      - name: outer/inner rectangle text objects
+        tests:
+          - outer selects full rectangle rows
+          - inner selects only interior
+          - package loads when Evil absent
+      - name: operators
+        tests:
+          - delete removes shape according to connector policy
+          - yank copies exact ASCII region
+      - name: graph navigation
+        tests:
+          - connected-neighbor follows edge direction
+          - no neighbor reports clear message
+
+  - id: text-editing-and-box-content
+    title: Rich box text editing with alignment, wrapping, and auto expansion
+    priority: medium
+    trunk_sources: [flo-artist-shapes.el, aa-annot.el]
+    current_coverage: basic label edit
+    prerequisites: [semantic-operation-model]
+    design:
+      commands: [box-edit-current-line, box-edit-title, box-edit-body, align-left, align-center, align-right, wrap-text]
+      policies: [expand, truncate, wrap]
+    implementation_slices:
+      - name: current-line editor
+        tests:
+          - center edit preserves border
+          - long text expands width
+          - left/right spacing exact
+      - name: multiline body editor
+        tests:
+          - three-line body round-trips
+          - body expands height when policy allows
+      - name: semantic zone integration
+        tests:
+          - zone edit updates metadata and buffer text
+
+  - id: normalization-cleanup-tools
+    title: Normalize, trim, pad, box, cleanup, and width gauge
+    priority: low
+    trunk_sources: [flo-artist-core.el, aa-layout.el]
+    current_coverage: internal shrink/helpers plus sidebar bounds
+    prerequisites: []
+    commands: [normalize-buffer, trim-blank-margin, pad-margin, box-diagram, layout-width-gauge-toggle]
+    implementation_slices:
+      - name: public normalize command
+        tests:
+          - leading blanks removed
+          - shape topology preserved with translated coordinates
+      - name: box diagram command
+        tests:
+          - outer frame added with expected size
+          - inner boxes remain parseable
+      - name: width gauge
+        tests:
+          - warning appears for diagram exceeding fill-column
+          - overlays clean up on mode disable
+
+  - id: spatial-index-and-performance
+    title: Spatial index and large-diagram performance
+    priority: low
+    trunk_sources: [aa-avl-tree.el, README.md]
+    current_coverage: direct list scans
+    prerequisites: [diagram-metadata-and-stable-identity]
+    design:
+      index_options: [direct-scan, bucket-index, interval-tree, avl-tree-if-benchmarked]
+      queries: [shape-at-point, shapes-intersecting-rect, nearest-shape, connectors-attached-to-shape]
+      threshold_policy: direct-scan-below-50-shapes
+    implementation_slices:
+      - name: benchmark fixtures
+        tests:
+          - benchmark command outputs machine-readable table
+      - name: bucket index
+        tests:
+          - query parity with direct scan on generated fixtures
+          - moving shape updates bucket membership
+      - name: AVL/interval index spike
+        tests:
+          - randomized insert/remove/find parity with reference
+
+  - id: diagram-wizard-and-templates
+    title: New diagram wizard and reusable templates
+    priority: low
+    trunk_sources: [aa-op.el, aa-transient.el, demos/state_machine.txt]
+    current_coverage: manual drawing only
+    prerequisites: [semantic-operation-model, export-import-roundtrip]
+    templates: [state-machine, two-box-flow, sequence-lanes, class-like-box, swimlane-flow]
+    implementation_slices:
+      - name: static templates as operation lists
+        tests:
+          - state-machine fixture inserts expected boxes/connectors
+          - inserted template parses expected shape count
+      - name: completing-read wizard
+        tests:
+          - noninteractive plist args insert deterministic diagram
+      - name: optional Transient wizard
+        tests:
+          - transient absent still supports wizard
+
+  - id: documentation-and-agent-index
+    title: AI-readable docs, module guides, and roadmap helpers
+    priority: low
+    trunk_sources: [docs/ai-index, docs/modules, docs/tasks/current-task-plan.md]
+    current_coverage: README, manual, trunk review, future.yml
+    prerequisites: []
+    docs_structure: [doc/ai-index/overview.org, doc/ai-index/navigation-guide.org, doc/modules/parser.org, doc/modules/shapes.org, doc/modules/ui.org, doc/modules/metadata.org]
+    implementation_slices:
+      - name: module index
+        tests:
+          - local doc links resolve
+          - every production .el file mentioned in module index
+      - name: future.yml helpers
+        tests:
+          - every feature ID unique
+          - checklist generation includes each feature once
+
+  - id: diagram-diff-and-versioning
+    title: Diagram diff, preview, and versioned history
+    priority: low
+    trunk_sources: [treespec.md, ext/treespec.md, README.md, aa-undo.el]
+    current_coverage: none
+    prerequisites: [diagram-metadata-and-stable-identity, semantic-operation-model, export-import-roundtrip]
+    diff_modes: [text-region-diff, semantic-diff, overlay-diff]
+    implementation_slices:
+      - name: semantic diff snapshots
+        tests:
+          - moved box classified as moved not remove+add
+          - label-only change detected
+      - name: Git region diff
+        tests:
+          - temp Git repo fixture returns expected diff
+          - outside Git repository degrades gracefully
+      - name: overlay preview
+        tests:
+          - overlay count matches diff records
+          - cleanup removes all diff overlays
+
+  - id: import-rasterize-preview-minimap
+    title: SVG preview, minimap thumbnails, rasterize, and import research
+    priority: low
+    trunk_sources: [README.md, hydra_transient.md, treespec.md]
+    current_coverage: none
+    prerequisites: [export-import-roundtrip, project-index-and-tree-adapter]
+    implementation_slices:
+      - name: SVG preview from ASCII lines
+        tests:
+          - SVG has expected viewBox and escaped text
+          - terminal fallback displays SVG source
+      - name: preview cache and sidebar thumbnail metadata
+        tests:
+          - operation marks preview cache dirty
+          - cache invalidates on metadata change
+      - name: bitmap import research spike
+        tests:
+          - research artifact only; no core package dependency
+
+  - id: agent-doc-workflow-and-sample-solutions
+    title: Roadmap validation and trunk lifecycle cleanup
+    priority: medium
+    trunk_sources: [docs/tasks/current-task-plan.md, .roomodes, test/*.el]
+    current_coverage: trunk excluded from build; future.yml maps useful ideas
+    prerequisites: []
+    implementation_slices:
+      - name: validate future.yml
+        tasks:
+          - add script or ERT helper for feature ID uniqueness
+          - verify trunk_inventory references existing feature IDs
+          - verify package tar excludes trunk
+        tests:
+          - invalid duplicate ID fixture fails
+          - current future.yml passes
+      - name: decide trunk lifecycle
+        tasks:
+          - archive under docs/reference, configure as submodule, or remove after specs extracted
+          - avoid nested Git checkout breaking show_changes
+        tests:
+          - change summary tools no longer fail on trunk/artist-assist
+
+maintenance:
+  update_rules:
+    - When a future feature is implemented, change status/current_coverage in this file.
+    - When new trunk/sample files appear, map them in trunk_coverage_matrix or mark as non-feature input.
+    - Keep feature IDs stable; docs and tasks may link to them.
+  validation_targets:
+    - future.yml parses as YAML.
+    - every features[].id is unique.
+    - every trunk_coverage_matrix covered_by reference points to a feature or implemented coverage item.
+    - eldev lint, compile, test, package, and doctor remain green.
+
+completion_note: guides-grid-snapping implemented with buffer-local overlays, snapping, adoption, project-sidecar persistence, guide undo/redo, property editing, docs, and regression coverage.

@@ -7,13 +7,15 @@
 
 ;; Buffer-local guide and grid support for Shape Artist.
 ;;
-;; The MVP is intentionally ephemeral: guides live in buffer-local variables and
-;; never alter diagram text.  Future metadata/history work can persist the same
-;; command-level semantics without changing the public command names.
+;; Guides live in buffer-local variables, never alter diagram text, and can be
+;; saved to a project-local sidecar file.  Guide state changes are recorded in a
+;; small guide-specific undo/redo stack so non-text overlay metadata can be
+;; rolled back without depending on text edits alone.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x)
 (require 'eieio)
 (require 'shape-artist-core)
 (require 'shape-artist-diagram-parse)
@@ -35,6 +37,11 @@
 (defcustom shape-artist-grid-size 4
   "Grid spacing, in cells, for guide grid overlays and optional grid snapping."
   :type 'integer
+  :group 'shape-artist-guides)
+
+(defcustom shape-artist-guides-persistence-file ".shape-artist/guides.el"
+  "Project-local sidecar file used by `shape-artist-guides-save'."
+  :type 'file
   :group 'shape-artist-guides)
 
 (defface shape-artist-guide-face
@@ -86,6 +93,18 @@
 (defvar-local shape-artist-guides--last-snap-report nil
   "Plist describing the latest guide/grid snap decision.")
 
+(defvar-local shape-artist-guides--suppress-snapping nil
+  "Non-nil while guide-originated operations should bypass snapping.")
+
+(defvar-local shape-artist-guides--undo-stack nil
+  "Stack of guide-state snapshots for `shape-artist-guides-undo'.")
+
+(defvar-local shape-artist-guides--redo-stack nil
+  "Stack of guide-state snapshots for `shape-artist-guides-redo'.")
+
+(defvar-local shape-artist-guides--history-inhibit nil
+  "Non-nil while guide mutations should not create history entries.")
+
 (defun shape-artist-guides--make-id ()
   "Return the next buffer-local guide id."
   (prog1 shape-artist-guides--next-id
@@ -126,12 +145,202 @@ When ACTIVE-ONLY is non-nil, hidden guides may be filtered depending on
                 (shape-artist-guides--active-p guide))))
      shape-artist-guides--guides)))
 
+(defun shape-artist-guides--guide-to-plist (guide)
+  "Return a serializable plist for GUIDE."
+  (list :id (shape-artist-guide-id guide)
+        :orientation (shape-artist-guide-orientation guide)
+        :position (shape-artist-guide-position guide)
+        :label (shape-artist-guide-label guide)
+        :visible (shape-artist-guide-visible guide)
+        :snap-distance (shape-artist-guide-snap-distance guide)
+        :adopted-shape-signatures
+        (shape-artist-guide-adopted-shape-signatures guide)
+        :source (shape-artist-guide-source guide)))
+
+(defun shape-artist-guides--plist-to-guide (plist)
+  "Return a guide record from serialized PLIST."
+  (shape-artist-guides--make-guide
+   :id (or (plist-get plist :id) (shape-artist-guides--make-id))
+   :orientation (shape-artist-guides--normalize-orientation
+                 (plist-get plist :orientation))
+   :position (max 0 (or (plist-get plist :position) 0))
+   :label (plist-get plist :label)
+   :visible (if (plist-member plist :visible)
+                (plist-get plist :visible)
+              t)
+   :snap-distance (plist-get plist :snap-distance)
+   :adopted-shape-signatures (plist-get plist :adopted-shape-signatures)
+   :source (or (plist-get plist :source) 'manual)))
+
+(defun shape-artist-guides--snapshot ()
+  "Return a complete serializable snapshot of current guide state."
+  (list :version 1
+        :next-id shape-artist-guides--next-id
+        :guides (mapcar #'shape-artist-guides--guide-to-plist
+                        shape-artist-guides--guides)
+        :guides-visible shape-artist-guides-visible
+        :guides-snap-enabled shape-artist-guides-snap-enabled
+        :grid-visible shape-artist-grid-visible
+        :grid-snap-enabled shape-artist-grid-snap-enabled
+        :grid-size shape-artist-grid-size
+        :last-snap-report shape-artist-guides--last-snap-report))
+
+(defun shape-artist-guides--move-adopted-for-state (state)
+  "Move adopted shapes when restoring guide positions from STATE."
+  (dolist (plist (plist-get state :guides))
+    (let* ((id (plist-get plist :id))
+           (target-position (plist-get plist :position))
+           (guide (and id (shape-artist-guides--guide-at-id id))))
+      (when (and guide target-position)
+        (shape-artist-guides--move-adopted-shapes
+         guide (- target-position (shape-artist-guide-position guide)))))))
+
+(defun shape-artist-guides--apply-state (state &optional move-adopted)
+  "Apply serialized guide STATE.
+
+When MOVE-ADOPTED is non-nil, adopted shapes are moved along with guide
+position changes before the restored signatures are installed."
+  (when move-adopted
+    (shape-artist-guides--move-adopted-for-state state))
+  (setq shape-artist-guides--next-id (or (plist-get state :next-id) 1))
+  (setq shape-artist-guides--guides
+        (mapcar #'shape-artist-guides--plist-to-guide
+                (plist-get state :guides)))
+  (setq shape-artist-guides-visible
+        (if (plist-member state :guides-visible)
+            (plist-get state :guides-visible)
+          t))
+  (setq shape-artist-guides-snap-enabled
+        (if (plist-member state :guides-snap-enabled)
+            (plist-get state :guides-snap-enabled)
+          t))
+  (setq shape-artist-grid-visible (plist-get state :grid-visible))
+  (setq shape-artist-grid-snap-enabled (plist-get state :grid-snap-enabled))
+  (setq shape-artist-grid-size (or (plist-get state :grid-size)
+                                  shape-artist-grid-size))
+  (setq shape-artist-guides--last-snap-report
+        (plist-get state :last-snap-report))
+  (shape-artist-guides-refresh-overlays)
+  (shape-artist--maybe-update-sidebar))
+
+(defun shape-artist-guides--record-history ()
+  "Record current guide state for guide undo/redo."
+  (unless shape-artist-guides--history-inhibit
+    (push (shape-artist-guides--snapshot) shape-artist-guides--undo-stack)
+    (setq shape-artist-guides--redo-stack nil)))
+
+(defun shape-artist-guides-undo ()
+  "Undo the latest guide-state change in the current buffer."
+  (interactive)
+  (if (not shape-artist-guides--undo-stack)
+      (message "No guide change to undo")
+    (let ((state (pop shape-artist-guides--undo-stack))
+          (current (shape-artist-guides--snapshot))
+          (shape-artist-guides--history-inhibit t))
+      (push current shape-artist-guides--redo-stack)
+      (shape-artist-guides--apply-state state t)
+      (message "Undid guide change"))))
+
+(defun shape-artist-guides-redo ()
+  "Redo the latest guide-state change in the current buffer."
+  (interactive)
+  (if (not shape-artist-guides--redo-stack)
+      (message "No guide change to redo")
+    (let ((state (pop shape-artist-guides--redo-stack))
+          (current (shape-artist-guides--snapshot))
+          (shape-artist-guides--history-inhibit t))
+      (push current shape-artist-guides--undo-stack)
+      (shape-artist-guides--apply-state state t)
+      (message "Redid guide change"))))
+
+(defun shape-artist-guides--project-root ()
+  "Return the current project root for guide persistence."
+  (file-name-as-directory
+   (or (locate-dominating-file default-directory ".git")
+       default-directory)))
+
+(defun shape-artist-guides--buffer-key ()
+  "Return stable persistence key for the current buffer."
+  (unless buffer-file-name
+    (user-error "Guide persistence requires a file-backed buffer"))
+  (file-relative-name (expand-file-name buffer-file-name)
+                      (shape-artist-guides--project-root)))
+
+(defun shape-artist-guides--persistence-path ()
+  "Return absolute path of the guide persistence sidecar file."
+  (expand-file-name shape-artist-guides-persistence-file
+                    (shape-artist-guides--project-root)))
+
+(defun shape-artist-guides--read-db (file)
+  "Read guide persistence database from FILE."
+  (if (not (file-exists-p file))
+      (list :version 1 :buffers nil)
+    (with-temp-buffer
+      (insert-file-contents file)
+      (let ((data (read (current-buffer))))
+        (unless (and (listp data) (plist-member data :buffers))
+          (user-error "Invalid Shape Artist guide persistence file: %s" file))
+        data))))
+
+(defun shape-artist-guides--write-db (file db)
+  "Write guide persistence database DB to FILE."
+  (make-directory (file-name-directory file) t)
+  (let ((print-length nil)
+        (print-level nil))
+    (with-temp-file file
+      (insert ";;; Shape Artist guide state.  Generated file; edit with care.\n")
+      (prin1 db (current-buffer))
+      (insert "\n"))))
+
+(defun shape-artist-guides-save ()
+  "Save current buffer guide state to the project sidecar file."
+  (interactive)
+  (let* ((file (shape-artist-guides--persistence-path))
+         (key (shape-artist-guides--buffer-key))
+         (db (shape-artist-guides--read-db file))
+         (buffers (plist-get db :buffers))
+         (state (shape-artist-guides--snapshot))
+         (cell (assoc key buffers)))
+    (if cell
+        (setcdr cell state)
+      (push (cons key state) buffers))
+    (setq db (plist-put db :buffers buffers))
+    (shape-artist-guides--write-db file db)
+    (message "Saved Shape Artist guides for %s" key)))
+
+(defun shape-artist-guides-load ()
+  "Load current buffer guide state from the project sidecar file."
+  (interactive)
+  (let* ((file (shape-artist-guides--persistence-path))
+         (key (shape-artist-guides--buffer-key))
+         (db (shape-artist-guides--read-db file))
+         (state (cdr (assoc key (plist-get db :buffers)))))
+    (if (not state)
+        (message "No saved Shape Artist guides for %s" key)
+      (shape-artist-guides--record-history)
+      (let ((shape-artist-guides--history-inhibit t))
+        (shape-artist-guides--apply-state state nil))
+      (message "Loaded Shape Artist guides for %s" key))))
+
+(defun shape-artist-guides-delete-saved ()
+  "Delete current buffer guide state from the project sidecar file."
+  (interactive)
+  (let* ((file (shape-artist-guides--persistence-path))
+         (key (shape-artist-guides--buffer-key))
+         (db (shape-artist-guides--read-db file))
+         (buffers (cl-remove key (plist-get db :buffers)
+                             :key #'car :test #'equal)))
+    (setq db (plist-put db :buffers buffers))
+    (shape-artist-guides--write-db file db)
+    (message "Deleted saved Shape Artist guides for %s" key)))
+
 (defun shape-artist-guides-add (orientation position &optional label source)
   "Add a guide at POSITION with ORIENTATION.
 
 ORIENTATION is `horizontal' for a row guide or `vertical' for a column guide.
 LABEL is optional display text.  SOURCE records whether the guide is manual,
 selection-derived, imported, etc."
+  (shape-artist-guides--record-history)
   (let ((guide (shape-artist-guides--make-guide
                 :id (shape-artist-guides--make-id)
                 :orientation (shape-artist-guides--normalize-orientation orientation)
@@ -152,6 +361,8 @@ selection-derived, imported, etc."
 
 (defun shape-artist-guides-delete-by-id (id)
   "Delete guide with ID and return non-nil if it existed."
+  (when (shape-artist-guides--guide-at-id id)
+    (shape-artist-guides--record-history))
   (let ((before (length shape-artist-guides--guides)))
     (setq shape-artist-guides--guides
           (cl-remove id shape-artist-guides--guides
@@ -238,43 +449,68 @@ shape side after the requested operation."
   "Snap bounds LEFT TOP RIGHT BOTTOM moving by DX/DY.
 
 SOURCE is stored in the snap report.  Return (SNAPPED-DX SNAPPED-DY REPORT)."
-  (let* ((target-left (+ left dx))
-         (target-right (+ right dx))
-         (target-top (+ top dy))
-         (target-bottom (+ bottom dy))
-         (x-snap (and shape-artist-guides-snap-enabled
-                      (shape-artist-guides--best-correction
-                       'vertical
-                       `((,target-left left) (,target-right right)))))
-         (y-snap (and shape-artist-guides-snap-enabled
-                      (shape-artist-guides--best-correction
-                       'horizontal
-                       `((,target-top top) (,target-bottom bottom)))))
-         (snapped-dx (+ dx (or (plist-get x-snap :correction) 0)))
-         (snapped-dy (+ dy (or (plist-get y-snap :correction) 0)))
-         (report (list :source source
-                       :requested (list dx dy)
-                       :snapped (list snapped-dx snapped-dy)
-                       :x x-snap
-                       :y y-snap)))
-    (when (or x-snap y-snap)
-      (setq shape-artist-guides--last-snap-report report))
-    (list snapped-dx snapped-dy report)))
+  (if shape-artist-guides--suppress-snapping
+      (list dx dy nil)
+    (let* ((target-left (+ left dx))
+           (target-right (+ right dx))
+           (target-top (+ top dy))
+           (target-bottom (+ bottom dy))
+           (x-snap (and shape-artist-guides-snap-enabled
+                        (shape-artist-guides--best-correction
+                         'vertical
+                         `((,target-left left) (,target-right right)))))
+           (y-snap (and shape-artist-guides-snap-enabled
+                        (shape-artist-guides--best-correction
+                         'horizontal
+                         `((,target-top top) (,target-bottom bottom)))))
+           ;; Guides have priority over grid snapping.  Grid snapping uses the
+           ;; top-left corner so moving a group preserves its internal spacing.
+           (grid-x (and (not x-snap)
+                        (shape-artist-guides--grid-correction
+                         target-left 'vertical 'grid-left)))
+           (grid-y (and (not y-snap)
+                        (shape-artist-guides--grid-correction
+                         target-top 'horizontal 'grid-top)))
+           (x-correction (or (plist-get x-snap :correction)
+                             (plist-get grid-x :correction)
+                             0))
+           (y-correction (or (plist-get y-snap :correction)
+                             (plist-get grid-y :correction)
+                             0))
+           (snapped-dx (+ dx x-correction))
+           (snapped-dy (+ dy y-correction))
+           (report (list :source source
+                         :requested (list dx dy)
+                         :snapped (list snapped-dx snapped-dy)
+                         :x x-snap
+                         :y y-snap
+                         :grid-x grid-x
+                         :grid-y grid-y)))
+      (when (or x-snap y-snap grid-x grid-y)
+        (setq shape-artist-guides--last-snap-report report))
+      (list snapped-dx snapped-dy report))))
 
 (defun shape-artist-guides-snap-rectangle-move (shape dx dy)
   "Return snapped (DX DY REPORT) for moving rectangle SHAPE."
-  (if (not (and shape shape-artist-guides-snap-enabled
-                (shape-artist-diagram-rectangle-p shape)))
+  (if (not (and shape (shape-artist-diagram-rectangle-p shape)))
       (list dx dy nil)
     (pcase-let ((`(,left ,top ,right ,bottom)
                  (shape-artist-guides--shape-bounds shape)))
       (shape-artist-guides--snap-bounds-move
        left top right bottom dx dy 'rectangle-move))))
 
+(defun shape-artist-guides-snap-edge-move (shape dx dy)
+  "Return snapped (DX DY REPORT) for moving edge SHAPE."
+  (if (not (and shape (shape-artist-diagram-edge-p shape)))
+      (list dx dy nil)
+    (pcase-let ((`(,left ,top ,right ,bottom)
+                 (shape-artist-guides--shape-bounds shape)))
+      (shape-artist-guides--snap-bounds-move
+       left top right bottom dx dy 'edge-move))))
+
 (defun shape-artist-guides-snap-group-move (shapes dx dy)
   "Return snapped (DX DY REPORT) for moving SHAPES as one group."
-  (let ((bounds (and shape-artist-guides-snap-enabled
-                     (shape-artist-guides--bounds-union shapes))))
+  (let ((bounds (shape-artist-guides--bounds-union shapes)))
     (if (not bounds)
         (list dx dy nil)
       (pcase-let ((`(,left ,top ,right ,bottom) bounds))
@@ -283,8 +519,8 @@ SOURCE is stored in the snap report.  Return (SNAPPED-DX SNAPPED-DY REPORT)."
 
 (defun shape-artist-guides-snap-rectangle-resize (shape x-anchor dx y-anchor dy)
   "Return snapped (DX DY REPORT) for resizing SHAPE from X-ANCHOR/Y-ANCHOR."
-  (if (not (and shape shape-artist-guides-snap-enabled
-                (shape-artist-diagram-rectangle-p shape)))
+  (if (or shape-artist-guides--suppress-snapping
+          (not (and shape (shape-artist-diagram-rectangle-p shape))))
       (list dx dy nil)
     (let* ((old-x (oref shape x))
            (old-y (oref shape y))
@@ -296,49 +532,95 @@ SOURCE is stored in the snap report.  Return (SNAPPED-DX SNAPPED-DY REPORT)."
            (target-right (if moving-left (+ old-x old-w) (+ old-x old-w dx)))
            (target-top (if moving-top (- old-y dy) old-y))
            (target-bottom (if moving-top (+ old-y old-h) (+ old-y old-h dy)))
-           (x-snap (shape-artist-guides--best-correction
-                    'vertical
-                    (if moving-left
-                        `((,target-left left))
-                      `((,target-right right)))))
-           (y-snap (shape-artist-guides--best-correction
-                    'horizontal
-                    (if moving-top
-                        `((,target-top top))
-                      `((,target-bottom bottom)))))
+           (x-snap (and (/= dx 0)
+                        shape-artist-guides-snap-enabled
+                        (shape-artist-guides--best-correction
+                         'vertical
+                         (if moving-left
+                             `((,target-left left))
+                           `((,target-right right))))))
+           (y-snap (and (/= dy 0)
+                        shape-artist-guides-snap-enabled
+                        (shape-artist-guides--best-correction
+                         'horizontal
+                         (if moving-top
+                             `((,target-top top))
+                           `((,target-bottom bottom))))))
+           (grid-x (and (/= dx 0)
+                        (not x-snap)
+                        (shape-artist-guides--grid-correction
+                         (if moving-left target-left target-right)
+                         'vertical
+                         (if moving-left 'grid-left 'grid-right))))
+           (grid-y (and (/= dy 0)
+                        (not y-snap)
+                        (shape-artist-guides--grid-correction
+                         (if moving-top target-top target-bottom)
+                         'horizontal
+                         (if moving-top 'grid-top 'grid-bottom))))
            (snapped-dx dx)
            (snapped-dy dy))
-      (when x-snap
-        (setq snapped-dx
-              (if moving-left
-                  (- old-x (shape-artist-guide-position (plist-get x-snap :guide)))
-                (- (shape-artist-guide-position (plist-get x-snap :guide))
-                   old-x old-w))))
-      (when y-snap
-        (setq snapped-dy
-              (if moving-top
-                  (- old-y (shape-artist-guide-position (plist-get y-snap :guide)))
-                (- (shape-artist-guide-position (plist-get y-snap :guide))
-                   old-y old-h))))
+      (when (or x-snap grid-x)
+        (let ((position (or (and x-snap
+                                 (shape-artist-guide-position
+                                  (plist-get x-snap :guide)))
+                            (plist-get grid-x :position))))
+          (setq snapped-dx
+                (if moving-left
+                    (- old-x position)
+                  (- position old-x old-w)))))
+      (when (or y-snap grid-y)
+        (let ((position (or (and y-snap
+                                 (shape-artist-guide-position
+                                  (plist-get y-snap :guide)))
+                            (plist-get grid-y :position))))
+          (setq snapped-dy
+                (if moving-top
+                    (- old-y position)
+                  (- position old-y old-h)))))
       ;; Do not clamp here: the existing resize implementation owns the
       ;; minimum-size user error and should keep signalling it unchanged.
       (let ((report (list :source 'rectangle-resize
                           :requested (list dx dy)
                           :snapped (list snapped-dx snapped-dy)
                           :x x-snap
-                          :y y-snap)))
-        (when (or x-snap y-snap)
+                          :y y-snap
+                          :grid-x grid-x
+                          :grid-y grid-y)))
+        (when (or x-snap y-snap grid-x grid-y)
           (setq shape-artist-guides--last-snap-report report))
         (list snapped-dx snapped-dy report)))))
 
+(defun shape-artist-guides--grid-active-p ()
+  "Return non-nil when grid snapping may affect operations."
+  (and shape-artist-grid-snap-enabled
+       (not shape-artist-guides--suppress-snapping)
+       (> shape-artist-grid-size 0)))
+
+(defun shape-artist-guides--grid-rounded-position (position)
+  "Return POSITION rounded to the nearest configured grid line."
+  (* shape-artist-grid-size
+     (round (/ (float position) shape-artist-grid-size))))
+
+(defun shape-artist-guides--grid-correction (position orientation edge)
+  "Return grid correction plist for POSITION, ORIENTATION, and EDGE."
+  (when (shape-artist-guides--grid-active-p)
+    (let* ((rounded (shape-artist-guides--grid-rounded-position position))
+           (correction (- rounded position)))
+      (unless (= correction 0)
+        (list :orientation orientation
+              :edge edge
+              :grid t
+              :position rounded
+              :distance (abs correction)
+              :correction correction)))))
+
 (defun shape-artist-guides--grid-snap-delta (value delta)
   "Return adjusted DELTA so VALUE+DELTA lands on nearest grid line."
-  (if (or (not shape-artist-grid-snap-enabled)
-          (<= shape-artist-grid-size 0))
+  (if (not (shape-artist-guides--grid-active-p))
       delta
     (let* ((target (+ value delta))
-           (grid shape-artist-grid-size)
-           (rounded (* grid (round (/ (float target) grid)))))
+           (rounded (shape-artist-guides--grid-rounded-position target)))
       (+ delta (- rounded target)))))
 
 (defun shape-artist-guides-clear-overlays ()
@@ -461,6 +743,8 @@ When LABEL is non-nil, store it as the guide display label."
 (defun shape-artist-guide-clear-all ()
   "Clear all guides and guide overlays in the current buffer."
   (interactive)
+  (when shape-artist-guides--guides
+    (shape-artist-guides--record-history))
   (setq shape-artist-guides--guides nil)
   (setq shape-artist-guides--last-snap-report nil)
   (shape-artist-guides-clear-overlays)
@@ -470,13 +754,220 @@ When LABEL is non-nil, store it as the guide display label."
 (defun shape-artist-guide-toggle-visibility ()
   "Toggle guide overlay visibility."
   (interactive)
+  (shape-artist-guides--record-history)
   (setq shape-artist-guides-visible (not shape-artist-guides-visible))
   (shape-artist-guides-refresh-overlays)
   (shape-artist--maybe-update-sidebar)
   (message "Guide overlays %s" (if shape-artist-guides-visible "visible" "hidden")))
 
+(defun shape-artist-guides--current-selection ()
+  "Return selected or locked shapes, using shape helpers when available."
+  (cond
+   ((and (boundp 'shape-artist--selected-shape-signatures)
+         shape-artist--selected-shape-signatures
+         (fboundp 'shape-artist-shapes-selected))
+    (shape-artist-shapes-selected))
+   ((and (boundp 'shape-artist--locked-shape) shape-artist--locked-shape)
+    (list shape-artist--locked-shape))
+   (t nil)))
+
+(defun shape-artist-guides--shape-signatures (shapes)
+  "Return parse signatures for SHAPES when signature helpers are loaded."
+  (when (fboundp 'shape-artist-shapes-signature)
+    (cl-remove nil (mapcar #'shape-artist-shapes-signature shapes))))
+
+(defun shape-artist-guides--adopt-signatures (guide signatures)
+  "Append SIGNATURES to GUIDE adoption list, avoiding duplicates."
+  (let ((existing (shape-artist-guide-adopted-shape-signatures guide)))
+    (dolist (signature signatures)
+      (cl-pushnew signature existing :test #'equal))
+    (setf (shape-artist-guide-adopted-shape-signatures guide) existing)))
+
+(defun shape-artist-guides--resolve-adopted-shapes (guide)
+  "Resolve adopted shapes of GUIDE from the latest parse results."
+  (when (fboundp 'shape-artist-shapes-find-by-signature)
+    (cl-remove nil
+               (mapcar #'shape-artist-shapes-find-by-signature
+                       (shape-artist-guide-adopted-shape-signatures guide)))))
+
+(defun shape-artist-guides--move-adopted-shapes (guide delta)
+  "Move shapes adopted by GUIDE by DELTA along the guide axis."
+  (when (and (/= delta 0)
+             (fboundp 'shape-artist-shapes-move-group))
+    (let ((shapes (shape-artist-guides--resolve-adopted-shapes guide)))
+      (when shapes
+        (let* ((dx (if (eq (shape-artist-guide-orientation guide) 'vertical)
+                       delta 0))
+               (dy (if (eq (shape-artist-guide-orientation guide) 'horizontal)
+                       delta 0))
+               (shape-artist-guides--suppress-snapping t)
+               (moved (shape-artist-shapes-move-group shapes dx dy))
+               (signatures (shape-artist-guides--shape-signatures moved)))
+          (when signatures
+            (setf (shape-artist-guide-adopted-shape-signatures guide)
+                  signatures))
+          moved)))))
+
+(defun shape-artist-guides--nearest-guide-at-point ()
+  "Return the guide nearest to point, preferring horizontal ties."
+  (let* ((pos (shape-artist--current-row-col))
+         (h (shape-artist-guides-find-nearest 'horizontal (car pos)))
+         (v (shape-artist-guides-find-nearest 'vertical (cdr pos)))
+         (h-dist (and h (shape-artist-guides--distance
+                         (shape-artist-guide-position h) (car pos))))
+         (v-dist (and v (shape-artist-guides--distance
+                         (shape-artist-guide-position v) (cdr pos)))))
+    (cond
+     ((and h v) (if (<= h-dist v-dist) h v))
+     (h h)
+     (v v))))
+
+(defun shape-artist-guide-adopt-selection-nearest (&optional id)
+  "Adopt the current selected or locked shapes into nearest guide or guide ID."
+  (interactive)
+  (let* ((guide (or (and id (shape-artist-guides--guide-at-id id))
+                    (shape-artist-guides--nearest-guide-at-point)))
+         (shapes (shape-artist-guides--current-selection))
+         (signatures (shape-artist-guides--shape-signatures shapes)))
+    (cond
+     ((not guide)
+      (message "No guide to adopt into"))
+     ((not signatures)
+      (message "No selected or locked shapes to adopt"))
+     (t
+      (shape-artist-guides--record-history)
+      (shape-artist-guides--adopt-signatures guide signatures)
+      (shape-artist--maybe-update-sidebar)
+      (message "Guide %d adopted %d shape(s)"
+               (shape-artist-guide-id guide)
+               (length signatures))))))
+
+(defun shape-artist-guide-clear-adoptions (&optional id)
+  "Clear adopted shape signatures from guide ID, or from all guides."
+  (interactive)
+  (shape-artist-guides--record-history)
+  (if id
+      (let ((guide (shape-artist-guides--guide-at-id id)))
+        (when guide
+          (setf (shape-artist-guide-adopted-shape-signatures guide) nil)))
+    (dolist (guide shape-artist-guides--guides)
+      (setf (shape-artist-guide-adopted-shape-signatures guide) nil)))
+  (shape-artist--maybe-update-sidebar)
+  (message "Cleared guide adoptions"))
+
+(defun shape-artist-guides--select-guide (&optional id prompt)
+  "Return guide ID or prompt with PROMPT."
+  (or (and id (shape-artist-guides--guide-at-id id))
+      (let* ((choices (mapcar
+                       (lambda (g)
+                         (cons (format "%d %s %d %s"
+                                       (shape-artist-guide-id g)
+                                       (shape-artist-guide-orientation g)
+                                       (shape-artist-guide-position g)
+                                       (or (shape-artist-guide-label g) ""))
+                               g))
+                       shape-artist-guides--guides))
+             (choice (and choices
+                          (completing-read (or prompt "Guide: ")
+                                           choices nil t))))
+        (cdr (assoc choice choices)))))
+
+(defun shape-artist-guide-set-label (&optional id label)
+  "Set guide ID display LABEL.  Empty LABEL clears the guide label."
+  (interactive)
+  (let ((guide (shape-artist-guides--select-guide id "Guide label for: ")))
+    (if (not guide)
+        (message "No guide selected")
+      (let ((new-label (or label
+                           (read-string "Guide label: "
+                                        (or (shape-artist-guide-label guide)
+                                            "")))))
+        (shape-artist-guides--record-history)
+        (setf (shape-artist-guide-label guide)
+              (unless (string-empty-p new-label) new-label))
+        (shape-artist-guides-refresh-overlays)
+        (shape-artist--maybe-update-sidebar)
+        (message "Guide %d label %s"
+                 (shape-artist-guide-id guide)
+                 (or (shape-artist-guide-label guide) "cleared"))))))
+
+(defun shape-artist-guide-set-snap-distance (&optional id snap-distance-value)
+  "Set guide ID snap SNAP-DISTANCE-VALUE.  Nil SNAP-DISTANCE-VALUE clears the per-guide override."
+  (interactive)
+  (let ((guide (shape-artist-guides--select-guide id "Guide snap distance for: ")))
+    (if (not guide)
+        (message "No guide selected")
+      (let* ((raw (unless snap-distance-value
+                    (if current-prefix-arg
+                        ""
+                      (read-string
+                       "Snap distance (empty = default): "
+                       (when (shape-artist-guide-snap-distance guide)
+                         (number-to-string
+                          (shape-artist-guide-snap-distance guide)))))))
+             (new-distance (cond
+                            (snap-distance-value snap-distance-value)
+                            ((string-empty-p raw) nil)
+                            (t (string-to-number raw)))))
+        (when (and new-distance (< new-distance 0))
+          (user-error "Snap distance must be non-negative"))
+        (shape-artist-guides--record-history)
+        (setf (shape-artist-guide-snap-distance guide) new-distance)
+        (shape-artist--maybe-update-sidebar)
+        (message "Guide %d snap distance %s"
+                 (shape-artist-guide-id guide)
+                 (if new-distance
+                     (number-to-string new-distance)
+                   "default"))))))
+
+(defun shape-artist-guide-toggle-nearest-visibility (&optional id)
+  "Toggle visibility of guide ID, or the guide nearest to point."
+  (interactive)
+  (let ((guide (or (and id (shape-artist-guides--guide-at-id id))
+                   (shape-artist-guides--nearest-guide-at-point))))
+    (if (not guide)
+        (message "No guide selected")
+      (shape-artist-guides--record-history)
+      (setf (shape-artist-guide-visible guide)
+            (not (shape-artist-guide-visible guide)))
+      (shape-artist-guides-refresh-overlays)
+      (shape-artist--maybe-update-sidebar)
+      (message "Guide %d %s"
+               (shape-artist-guide-id guide)
+               (if (shape-artist-guide-visible guide) "visible" "hidden")))))
+
+(defun shape-artist-guide-edit-properties (&optional id)
+  "Edit position, label, visibility, and snap distance of guide ID."
+  (interactive)
+  (let ((guide (shape-artist-guides--select-guide id "Edit guide: ")))
+    (if (not guide)
+        (message "No guide selected")
+      (let* ((position (read-number "Position: "
+                                    (shape-artist-guide-position guide)))
+             (label (read-string "Label: "
+                                 (or (shape-artist-guide-label guide) "")))
+             (visible (y-or-n-p "Visible? "))
+             (snap-raw (read-string
+                        "Snap distance override (empty = default): "
+                        (when (shape-artist-guide-snap-distance guide)
+                          (number-to-string
+                           (shape-artist-guide-snap-distance guide)))))
+             (snap-distance (unless (string-empty-p snap-raw)
+                              (string-to-number snap-raw))))
+        (when (and snap-distance (< snap-distance 0))
+          (user-error "Snap distance must be non-negative"))
+        (shape-artist-guides--record-history)
+        (setf (shape-artist-guide-position guide) (max 0 position))
+        (setf (shape-artist-guide-label guide)
+              (unless (string-empty-p label) label))
+        (setf (shape-artist-guide-visible guide) visible)
+        (setf (shape-artist-guide-snap-distance guide) snap-distance)
+        (shape-artist-guides-refresh-overlays)
+        (shape-artist--maybe-update-sidebar)
+        (message "Edited guide %d" (shape-artist-guide-id guide))))))
+
 (defun shape-artist-guide-move (&optional id new-position)
-  "Move guide ID to NEW-POSITION."
+  "Move guide ID to NEW-POSITION and drag adopted shapes along its axis."
   (interactive)
   (let* ((guide (or (and id (shape-artist-guides--guide-at-id id))
                     (let* ((choices (mapcar
@@ -492,39 +983,54 @@ When LABEL is non-nil, store it as the guide display label."
                       (cdr (assoc choice choices))))))
     (if (not guide)
         (message "No guide selected")
-      (let ((pos (or new-position
-                     (read-number "New guide position: "
-                                  (shape-artist-guide-position guide)))))
-        (setf (shape-artist-guide-position guide) (max 0 pos))
+      (let* ((old-position (shape-artist-guide-position guide))
+             (pos (max 0 (or new-position
+                             (read-number "New guide position: "
+                                          old-position))))
+             (delta (- pos old-position)))
+        (shape-artist-guides--record-history)
+        (let ((moved (shape-artist-guides--move-adopted-shapes guide delta)))
+        (setf (shape-artist-guide-position guide) pos)
         (shape-artist-guides-refresh-overlays)
         (shape-artist--maybe-update-sidebar)
-        (message "Moved guide %d to %d" (shape-artist-guide-id guide) pos)))))
+        (message "Moved guide %d to %d%s"
+                 (shape-artist-guide-id guide)
+                 pos
+                 (if moved
+                     (format ", moved %d adopted shape(s)" (length moved))
+                   "")))))))
 
 (defun shape-artist-guide-selection-to-guide ()
   "Create guides from current shape selection or locked shape bounds."
   (interactive)
-  (let* ((shapes (cond
-                  ((and (boundp 'shape-artist--selected-shape-signatures)
-                        shape-artist--selected-shape-signatures
-                        (fboundp 'shape-artist-shapes-selected))
-                   (shape-artist-shapes-selected))
-                  ((and (boundp 'shape-artist--locked-shape) shape-artist--locked-shape)
-                   (list shape-artist--locked-shape))
-                  (t nil)))
+  (let* ((shapes (shape-artist-guides--current-selection))
+         (signatures (shape-artist-guides--shape-signatures shapes))
          (bounds (shape-artist-guides--bounds-union shapes)))
     (if (not bounds)
         (message "No selected or locked shape to convert to guides")
-      (pcase-let ((`(,left ,top ,right ,bottom) bounds))
-        (shape-artist-guides-add 'vertical left "selection-left" 'selection)
-        (shape-artist-guides-add 'vertical right "selection-right" 'selection)
-        (shape-artist-guides-add 'horizontal top "selection-top" 'selection)
-        (shape-artist-guides-add 'horizontal bottom "selection-bottom" 'selection)
+      (shape-artist-guides--record-history)
+      (pcase-let* ((`(,left ,top ,right ,bottom) bounds)
+                   (created (let ((shape-artist-guides--history-inhibit t))
+                              (list
+                               (shape-artist-guides-add
+                                'vertical left "selection-left" 'selection)
+                               (shape-artist-guides-add
+                                'vertical right "selection-right" 'selection)
+                               (shape-artist-guides-add
+                                'horizontal top "selection-top" 'selection)
+                               (shape-artist-guides-add
+                                'horizontal bottom "selection-bottom" 'selection)))))
+        (dolist (guide created)
+          (shape-artist-guides--adopt-signatures guide signatures))
+        (shape-artist-guides-refresh-overlays)
+        (shape-artist--maybe-update-sidebar)
         (message "Created guides from selection bounds (%d,%d)-(%d,%d)"
                  left top right bottom)))))
 
 (defun shape-artist-snap-toggle ()
   "Toggle guide snapping for the current buffer."
   (interactive)
+  (shape-artist-guides--record-history)
   (setq shape-artist-guides-snap-enabled (not shape-artist-guides-snap-enabled))
   (shape-artist--maybe-update-sidebar)
   (message "Guide snapping %s" (if shape-artist-guides-snap-enabled "enabled" "disabled")))
@@ -532,6 +1038,7 @@ When LABEL is non-nil, store it as the guide display label."
 (defun shape-artist-grid-toggle ()
   "Toggle grid overlay visibility for the current buffer."
   (interactive)
+  (shape-artist-guides--record-history)
   (setq shape-artist-grid-visible (not shape-artist-grid-visible))
   (shape-artist-guides-refresh-grid-overlays)
   (shape-artist--maybe-update-sidebar)
@@ -542,6 +1049,7 @@ When LABEL is non-nil, store it as the guide display label."
   (interactive (list (read-number "Grid size: " shape-artist-grid-size)))
   (when (< size 1)
     (user-error "Grid size must be at least 1"))
+  (shape-artist-guides--record-history)
   (setq shape-artist-grid-size size)
   (shape-artist-guides-refresh-grid-overlays)
   (shape-artist--maybe-update-sidebar)
@@ -550,6 +1058,7 @@ When LABEL is non-nil, store it as the guide display label."
 (defun shape-artist-grid-snap-toggle ()
   "Toggle snap-to-grid for the current buffer."
   (interactive)
+  (shape-artist-guides--record-history)
   (setq shape-artist-grid-snap-enabled (not shape-artist-grid-snap-enabled))
   (shape-artist--maybe-update-sidebar)
   (message "Grid snapping %s" (if shape-artist-grid-snap-enabled "enabled" "disabled")))
@@ -582,12 +1091,18 @@ When LABEL is non-nil, store it as the guide display label."
                                           (symbol-name (shape-artist-guide-orientation b)))))))
           (setq text
                 (concat text
-                        (format "  #%d %-10s %d %s%s\n"
+                        (format "  #%d %-10s %d %s%s%s\n"
                                 (shape-artist-guide-id guide)
                                 (shape-artist-guide-orientation guide)
                                 (shape-artist-guide-position guide)
                                 (if (shape-artist-guide-visible guide) "" "hidden ")
-                                (or (shape-artist-guide-label guide) "")))))
+                                (or (shape-artist-guide-label guide) "")
+                                (let ((n (length
+                                          (shape-artist-guide-adopted-shape-signatures
+                                           guide))))
+                                  (if (> n 0)
+                                      (format " adopted=%d" n)
+                                    ""))))))
       (setq text (concat text "  (none)\n")))
     (concat text (or (shape-artist-guides--snap-report-line) ""))))
 

@@ -587,6 +587,10 @@ selected box group can keep its connectors attached while moving."
 
 (defun shape-artist-shapes--move-edge (edge dx dy)
   "Move EDGE by DX and DY."
+  (pcase-let ((`(,snapped-dx ,snapped-dy ,_)
+               (shape-artist-guides-snap-edge-move edge dx dy)))
+    (setq dx snapped-dx
+          dy snapped-dy))
   (let* ((style (shape-artist-shapes-edge-style edge))
          (need-left (max 0 (- (min (+ (oref edge x) dx) (+ (oref edge x2) dx)))))
          (need-top (max 0 (- (min (+ (oref edge y) dy) (+ (oref edge y2) dy))))))
