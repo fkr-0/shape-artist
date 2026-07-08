@@ -45,7 +45,7 @@
    (y2 :initarg :y2 :initform 0 :type integer
        :documentation "Y coordinate of endpoint.")
    (edge-type :initarg :edge-type :initform 'free
-              :documentation "Edge classification: \='connected, \='disconnected, or \='free.")
+              :documentation "Edge classification: connected, disconnected, or free.")
    (arrow-start :initarg :arrow-start :initform nil
                 :documentation "Non-nil when the start point has an arrow head.")
    (arrow-end :initarg :arrow-end :initform nil

@@ -106,7 +106,7 @@
        shape))))
 
 (defun shape-artist-shape-resize-wider (&optional count)
-  "Widen rectangle targets, or extend horizontal edges."
+  "Widen rectangle targets by COUNT, or extend horizontal edges."
   (interactive "p")
   (let ((n (shape-artist-shape-edit--count count)))
     (shape-artist-shape-edit--apply
@@ -119,7 +119,7 @@
         (t shape))))))
 
 (defun shape-artist-shape-resize-narrower (&optional count)
-  "Narrow rectangle targets, or shorten horizontal edges."
+  "Narrow rectangle targets by COUNT, or shorten horizontal edges."
   (interactive "p")
   (let ((n (shape-artist-shape-edit--count count)))
     (shape-artist-shape-edit--apply
@@ -134,7 +134,7 @@
         (t shape))))))
 
 (defun shape-artist-shape-resize-taller (&optional count)
-  "Make rectangle targets taller, or extend vertical edges."
+  "Make rectangle targets taller by COUNT, or extend vertical edges."
   (interactive "p")
   (let ((n (shape-artist-shape-edit--count count)))
     (shape-artist-shape-edit--apply
@@ -147,7 +147,7 @@
         (t shape))))))
 
 (defun shape-artist-shape-resize-shorter (&optional count)
-  "Make rectangle targets shorter, or shorten vertical edges."
+  "Make rectangle targets shorter by COUNT, or shorten vertical edges."
   (interactive "p")
   (let ((n (shape-artist-shape-edit--count count)))
     (shape-artist-shape-edit--apply
