@@ -2,6 +2,7 @@
 tools/
 docs/
 tests/
+trunk/
 .github/
 .eldev/
 Eldev

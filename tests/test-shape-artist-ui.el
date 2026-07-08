@@ -105,17 +105,18 @@
       (should (string-match-p "none detected" text)))))
 
 (ert-deftest test-shape-artist-ui-shapes-section-with-shapes ()
-  "Test shapes section shows shape list."
+  "Test shapes section shows a shape tree."
   (test-artist-with-buffer
       "+---+\n|   |\n+---+"
     (let ((shape-artist--update-sidebar-fn nil))
       (shape-artist-shapes-parse)
       (let ((text (shape-artist--ui-shapes-section)))
-        (should (string-match-p "=== Shapes ===" text))
+        (should (string-match-p "=== Shape Tree ===" text))
+        (should (string-match-p "root" text))
         (should (string-match-p "rect" text))))))
 
 (ert-deftest test-shape-artist-ui-shapes-section-marker ()
-  "Test shapes section shows >>> marker for selected shape in select mode."
+  "Test tree section shows current marker for selected shape in select mode."
   (test-artist-with-buffer
       "+---+\n|   |\n+---+"
     (let ((shape-artist--update-sidebar-fn nil))
@@ -123,10 +124,10 @@
       (setq shape-artist--mode 'select)
       (setq shape-artist--select-index 0)
       (let ((text (shape-artist--ui-shapes-section)))
-        (should (string-match-p ">>>" text))))))
+        (should (string-match-p ">   rect" text))))))
 
 (ert-deftest test-shape-artist-ui-shapes-section-locked ()
-  "Test shapes section shows LOCKED marker for locked shape."
+  "Test tree section shows locked marker for locked shape."
   (test-artist-with-buffer
       "+---+\n|   |\n+---+"
     (let ((shape-artist--update-sidebar-fn nil))
@@ -134,7 +135,59 @@
       (setq shape-artist--mode 'shape-edit)
       (setq shape-artist--locked-shape (nth 0 shape-artist--last-shapes-list))
       (let ((text (shape-artist--ui-shapes-section)))
-        (should (string-match-p "LOCKED" text))))))
+        (should (string-match-p " L  rect" text))))))
+
+(ert-deftest test-shape-artist-ui-shapes-section-selected-marker ()
+  "Test tree section shows selected marker for multi-selected shapes."
+  (test-artist-with-buffer
+      "+---+\n|   |\n+---+"
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (setq shape-artist--selected-shape-signatures
+            (list (shape-artist-shapes-signature
+                   (nth 0 shape-artist--last-shapes-list))))
+      (let ((text (shape-artist--ui-shapes-section)))
+        (should (string-match-p "  \\* rect" text))))))
+
+;;; --- Layout Section Tests ---
+
+(ert-deftest test-shape-artist-ui-diagram-bounds-none ()
+  "Diagram bounds are nil when no shapes are parsed."
+  (test-artist-with-ui-buffer
+      "abc"
+    (setq shape-artist--last-shapes-list nil)
+    (should-not (shape-artist--ui-diagram-bounds))))
+
+(ert-deftest test-shape-artist-ui-diagram-bounds-rectangle ()
+  "Diagram bounds cover parsed rectangles."
+  (test-artist-with-buffer
+      "+---+\n|   |\n+---+"
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (should (equal (shape-artist--ui-diagram-bounds)
+                     '(0 0 4 2 1))))))
+
+(ert-deftest test-shape-artist-ui-layout-section-with-shapes ()
+  "Layout section shows bounds, size, and shape count."
+  (test-artist-with-buffer
+      "+---+\n|   |\n+---+"
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (let ((text (shape-artist--ui-layout-section)))
+        (should (string-match-p "=== Layout ===" text))
+        (should (string-match-p "Bounds: (0,0)-(4,2)" text))
+        (should (string-match-p "Size: 4x2" text))
+        (should (string-match-p "Shapes: 1" text))))))
+
+(ert-deftest test-shape-artist-ui-center-diagram-moves-point ()
+  "Centering a parsed diagram moves point to its geometric center."
+  (test-artist-with-buffer
+      "+---+\n|   |\n+---+"
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (goto-char (point-min))
+      (shape-artist-ui-center-diagram)
+      (should (equal (shape-artist--current-row-col) '(1 . 2))))))
 
 ;;; --- Keys Section Tests ---
 
@@ -145,7 +198,8 @@
     (setq shape-artist--mode 'move)
     (let ((text (shape-artist--ui-keys-section)))
       (should (string-match-p "h/j/k/l  Move" text))
-      (should (string-match-p "SPC" text)))))
+      (should (string-match-p "SPC" text))
+      (should (string-match-p "Quick actions" text)))))
 
 (ert-deftest test-shape-artist-ui-keys-section-draw ()
   "Test keys section for draw mode."
@@ -162,8 +216,8 @@
       "abc"
     (setq shape-artist--mode 'select)
     (let ((text (shape-artist--ui-keys-section)))
-      (should (string-match-p "n        Next shape" text))
-      (should (string-match-p "RET      Lock in shape" text)))))
+      (should (string-match-p "n/p      Next/prev shape" text))
+      (should (string-match-p "RET      Lock/edit" text)))))
 
 (ert-deftest test-shape-artist-ui-keys-section-shape-edit ()
   "Test keys section for shape-edit mode."
@@ -171,8 +225,31 @@
       "abc"
     (setq shape-artist--mode 'shape-edit)
     (let ((text (shape-artist--ui-keys-section)))
-      (should (string-match-p "e        Edit label" text))
+      (should (string-match-p "H/J/K/L  Move shape/group" text))
       (should (string-match-p "Navigate interior" text)))))
+
+(ert-deftest test-shape-artist-ui-quick-actions-move-mode ()
+  "Quick actions include global and mode-specific commands."
+  (test-artist-with-ui-buffer
+      "abc"
+    (setq shape-artist--mode 'move)
+    (let ((labels (mapcar #'shape-artist--ui-quick-action-label
+                          (shape-artist--ui-quick-actions))))
+      (should (member "o        Show outline tree" labels))
+      (should (member "z        Center diagram" labels))
+      (should (member "SPC      Start drawing from cursor" labels))
+      (should-not (member "RET      Lock/edit selection" labels)))))
+
+(ert-deftest test-shape-artist-ui-quick-actions-select-mode ()
+  "Quick actions switch to SELECT commands in select mode."
+  (test-artist-with-ui-buffer
+      "abc"
+    (setq shape-artist--mode 'select)
+    (let ((labels (mapcar #'shape-artist--ui-quick-action-label
+                          (shape-artist--ui-quick-actions))))
+      (should (member "RET      Lock/edit selection" labels))
+      (should (member "t        Toggle current candidate" labels))
+      (should-not (member "SPC      Start drawing from cursor" labels)))))
 
 (ert-deftest test-shape-artist-ui-keys-section-empty ()
   "Test keys section for unknown mode returns just the header."

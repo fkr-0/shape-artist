@@ -27,6 +27,9 @@
 (define-key shape-artist-move-map (kbd "d") #'shape-artist-enter-draw)
 (define-key shape-artist-move-map (kbd "q") #'shape-artist-quit)
 (define-key shape-artist-move-map (kbd "a") #'shape-artist-ui-show)
+(define-key shape-artist-move-map (kbd "?") #'shape-artist-ui-command-menu)
+(define-key shape-artist-move-map (kbd "o") #'shape-artist-ui-show-outline)
+(define-key shape-artist-move-map (kbd "z") #'shape-artist-ui-center-diagram)
 
 (defvar shape-artist-draw-map (make-sparse-keymap)
   "Keymap for DRAW mode documentation and embedding.")
@@ -39,6 +42,8 @@
 (define-key shape-artist-draw-map (kbd "RET") #'shape-artist-commit-and-exit)
 (define-key shape-artist-draw-map (kbd "<escape>") #'shape-artist-cancel-and-exit)
 (define-key shape-artist-draw-map (kbd "p") #'shape-artist-pick-tool)
+(define-key shape-artist-draw-map (kbd "?") #'shape-artist-ui-command-menu)
+(define-key shape-artist-draw-map (kbd "z") #'shape-artist-ui-center-diagram)
 
 (defvar shape-artist-select-map (make-sparse-keymap)
   "Keymap for SELECT mode documentation and embedding.")
@@ -51,6 +56,9 @@
 (define-key shape-artist-select-map (kbd "c") #'shape-artist-select-clear-selected)
 (define-key shape-artist-select-map (kbd "RET") #'shape-artist-select-confirm)
 (define-key shape-artist-select-map (kbd "<escape>") #'shape-artist-select-cancel)
+(define-key shape-artist-select-map (kbd "?") #'shape-artist-ui-command-menu)
+(define-key shape-artist-select-map (kbd "o") #'shape-artist-ui-show-outline)
+(define-key shape-artist-select-map (kbd "z") #'shape-artist-ui-center-diagram)
 
 (defvar shape-artist-shape-edit-map (make-sparse-keymap)
   "Keymap for SHAPE-EDIT mode documentation and embedding.")
@@ -77,6 +85,9 @@
 (define-key shape-artist-shape-edit-map (kbd "{") #'shape-artist-shape-resize-up)
 (define-key shape-artist-shape-edit-map (kbd "}") #'shape-artist-shape-shrink-up)
 (define-key shape-artist-shape-edit-map (kbd "<escape>") #'shape-artist-shape-edit-exit)
+(define-key shape-artist-shape-edit-map (kbd "?") #'shape-artist-ui-command-menu)
+(define-key shape-artist-shape-edit-map (kbd "o") #'shape-artist-ui-show-outline)
+(define-key shape-artist-shape-edit-map (kbd "z") #'shape-artist-ui-center-diagram)
 
 ;;; --- Modal Dispatch Helpers ---
 
@@ -297,6 +308,9 @@
     (define-key shape-artist-core-mode-map (kbd "u") #'shape-artist--dispatch-utility)
     (define-key shape-artist-core-mode-map (kbd "q") #'shape-artist-quit)
     (define-key shape-artist-core-mode-map (kbd "a") #'shape-artist-ui-show)
+    (define-key shape-artist-core-mode-map (kbd "?") #'shape-artist-ui-command-menu)
+    (define-key shape-artist-core-mode-map (kbd "o") #'shape-artist-ui-show-outline)
+    (define-key shape-artist-core-mode-map (kbd "z") #'shape-artist-ui-center-diagram)
     (define-key shape-artist-core-mode-map (kbd "C-RET") #'shape-artist--dispatch-commit-stay)
     (define-key shape-artist-core-mode-map (kbd "C-<return>") #'shape-artist--dispatch-commit-stay)
     (define-key shape-artist-core-mode-map (kbd "n") #'shape-artist--dispatch-select-next)
@@ -339,7 +353,10 @@
       (kbd "C-n") #'shape-artist-select-start
       "u" #'shape-artist-ui-toggle
       "q" #'shape-artist-quit
-      "a" #'shape-artist-ui-show)
+      "a" #'shape-artist-ui-show
+      "?" #'shape-artist-ui-command-menu
+      "o" #'shape-artist-ui-show-outline
+      "z" #'shape-artist-ui-center-diagram)
 
     (evil-define-key* 'artist shape-artist-core-mode-map
       "h" #'shape-artist-draw-move-left
@@ -352,6 +369,8 @@
       (kbd "C-<return>") #'shape-artist-commit-stay
       (kbd "<escape>") #'shape-artist-cancel-and-exit
       "p" #'shape-artist-pick-tool
+      "?" #'shape-artist-ui-command-menu
+      "z" #'shape-artist-ui-center-diagram
       "u" #'shape-artist-undo)
 
     (evil-define-key* 'select shape-artist-core-mode-map
@@ -363,6 +382,9 @@
       "c" #'shape-artist-select-clear-selected
       (kbd "RET") #'shape-artist-select-confirm
       (kbd "<escape>") #'shape-artist-select-cancel
+      "?" #'shape-artist-ui-command-menu
+      "o" #'shape-artist-ui-show-outline
+      "z" #'shape-artist-ui-center-diagram
       "u" #'shape-artist-ui-toggle)
 
     (evil-define-key* 'shape-edit shape-artist-core-mode-map
@@ -388,6 +410,9 @@
       "{" #'shape-artist-shape-resize-up
       "}" #'shape-artist-shape-shrink-up
       (kbd "<escape>") #'shape-artist-shape-edit-exit
+      "?" #'shape-artist-ui-command-menu
+      "o" #'shape-artist-ui-show-outline
+      "z" #'shape-artist-ui-center-diagram
       "u" #'shape-artist-ui-toggle)))
 
 (shape-artist--install-modal-dispatch-keymap)

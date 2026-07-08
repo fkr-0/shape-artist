@@ -411,4 +411,42 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
           (move-to-column (oref shape x))
           (should (eq (char-after) ?+)))))))
 
+(ert-deftest test-shape-artist-shapes-move-rectangle-sticks-attached-edge ()
+  "Moving a rectangle moves a straight edge attached to its side."
+  (test-artist-with-shapes-buffer
+      "+--+    \n|  |--- \n+--+    \n        "
+    (let ((rect (cl-find-if #'shape-artist-diagram-rectangle-p
+                            shape-artist--last-shapes-list)))
+      (shape-artist-shapes-move rect 0 1)
+      (shape-artist-shapes-parse)
+      (let ((edge (cl-find-if #'shape-artist-diagram-edge-p
+                              shape-artist--last-shapes-list)))
+        (should (= (oref rect y) 1))
+        (should (= (oref edge y) 2))
+        (should (= (oref edge y2) 2))
+        (should (equal (plist-get (oref edge start-attachment) :rect)
+                       '(0 1 3 2)))
+        (should (eq (plist-get (oref edge start-attachment) :side)
+                    'right))))))
+
+(ert-deftest test-shape-artist-shapes-move-group-preserves-connector ()
+  "Moving connected rectangles as a group redraws their connector once."
+  (test-artist-with-shapes-buffer
+      "+--+   +--+\n|  |---|  |\n+--+   +--+\n           "
+    (let ((rects (cl-remove-if-not #'shape-artist-diagram-rectangle-p
+                                   shape-artist--last-shapes-list)))
+      (shape-artist-shapes-move-group rects 0 1)
+      (shape-artist-shapes-parse)
+      (let ((edges (cl-remove-if-not #'shape-artist-diagram-edge-p
+                                     shape-artist--last-shapes-list))
+            (ys (sort (mapcar (lambda (shape) (oref shape y))
+                              (cl-remove-if-not #'shape-artist-diagram-rectangle-p
+                                                shape-artist--last-shapes-list))
+                      #'<)))
+        (should (equal ys '(1 1)))
+        (should (= (length edges) 1))
+        (should (= (oref (car edges) y) 2))
+        (should (= (oref (car edges) y2) 2))
+        (should (eq (oref (car edges) edge-type) 'connected))))))
+
 ;;; test-shape-artist-shapes.el ends here

@@ -281,6 +281,23 @@
     (should-not (shape-artist-diagram--point-adjacent-to-rect-p 0 0 rects))
     (should-not (shape-artist-diagram--point-adjacent-to-rect-p 20 20 rects))))
 
+(ert-deftest test-shape-artist-diagram-edge-attachment-metadata ()
+  "Connected edge endpoints remember the rectangle side they touch."
+  (test-artist-with-buffer
+      "+--+    \n|  |--- \n+--+    "
+    (let* ((grid (shape-artist-diagram--extract-grid (current-buffer)))
+           (rects (shape-artist-diagram--detect-rectangles grid))
+           (edges (shape-artist-diagram--classify-edges
+                   (shape-artist-diagram--detect-edges grid rects) rects))
+           (edge (car edges))
+           (attachment (oref edge start-attachment)))
+      (should (= (length rects) 1))
+      (should (eq (oref edge edge-type) 'disconnected))
+      (should (equal (plist-get attachment :rect) '(0 0 3 2)))
+      (should (eq (plist-get attachment :side) 'right))
+      (should (= (plist-get attachment :offset) 1))
+      (should-not (oref edge end-attachment)))))
+
 ;;; --- Flatten Tree ---
 
 (ert-deftest test-shape-artist-diagram-flatten-tree-nested ()

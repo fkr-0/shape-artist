@@ -10,6 +10,9 @@
 (require 'cl-lib)
 (require 'shape-artist-core)
 (require 'shape-artist-diagram-parse)
+(require 'shape-artist-shapes)
+
+(declare-function shape-artist-diagram-outline-show "shape-artist-diagram-outline")
 
 ;;; --- Variables ---
 
@@ -18,6 +21,14 @@
 
 (defvar-local shape-artist--sidebar-buffer-name nil
   "Name of the sidebar buffer for this artist buffer.")
+
+(defvar shape-artist-ui-use-transient t
+  "When non-nil, use Transient for `shape-artist-ui-command-menu' if available.
+
+The command menu always has a dependency-free `completing-read' fallback.")
+
+(defvar shape-artist--ui-transient-defined nil
+  "Non-nil once the optional Transient prefix has been defined.")
 
 ;;; --- Sidebar Buffer ---
 
@@ -71,34 +82,128 @@
                 (forward-line 1)))
             count)))
 
+(defun shape-artist--ui-shape-extents (shape)
+  "Return (MIN-X MIN-Y MAX-X MAX-Y) for SHAPE."
+  (if (shape-artist-diagram-edge-p shape)
+      (let ((x1 (oref shape x))
+            (y1 (oref shape y))
+            (x2 (oref shape x2))
+            (y2 (oref shape y2)))
+        (list (min x1 x2) (min y1 y2) (max x1 x2) (max y1 y2)))
+    (list (oref shape x)
+          (oref shape y)
+          (+ (oref shape x) (oref shape width))
+          (+ (oref shape y) (oref shape height)))))
+
+(defun shape-artist--ui-diagram-bounds (&optional shapes)
+  "Return diagram bounds for SHAPES as (MIN-X MIN-Y MAX-X MAX-Y COUNT).
+
+SHAPES defaults to `shape-artist--last-shapes-list'.  Return nil when
+there are no known shapes."
+  (let ((items (or shapes shape-artist--last-shapes-list))
+        (min-x nil)
+        (min-y nil)
+        (max-x nil)
+        (max-y nil)
+        (count 0))
+    (dolist (shape items)
+      (unless (shape-artist-diagram-root-p shape)
+        (pcase-let ((`(,x1 ,y1 ,x2 ,y2) (shape-artist--ui-shape-extents shape)))
+          (setq min-x (if min-x (min min-x x1) x1))
+          (setq min-y (if min-y (min min-y y1) y1))
+          (setq max-x (if max-x (max max-x x2) x2))
+          (setq max-y (if max-y (max max-y y2) y2))
+          (cl-incf count))))
+    (when (> count 0)
+      (list min-x min-y max-x max-y count))))
+
+(defun shape-artist--ui-layout-section ()
+  "Generate diagram layout/bounds section text."
+  (let ((bounds (shape-artist--ui-diagram-bounds)))
+    (if bounds
+        (pcase-let ((`(,min-x ,min-y ,max-x ,max-y ,count) bounds))
+          (format "=== Layout ===\nBounds: (%d,%d)-(%d,%d)\nSize: %dx%d\nShapes: %d\n"
+                  min-x min-y max-x max-y
+                  (- max-x min-x) (- max-y min-y) count))
+      "=== Layout ===\n(no diagram bounds)\n")))
+
+(defun shape-artist-ui-center-diagram ()
+  "Move point and window view to the center of the parsed diagram."
+  (interactive)
+  (let ((bounds (shape-artist--ui-diagram-bounds)))
+    (if (not bounds)
+        (message "No parsed Shape Artist diagram to center.")
+      (pcase-let* ((`(,min-x ,min-y ,max-x ,max-y ,_) bounds)
+                   (center-x (round (+ min-x (/ (- max-x min-x) 2.0))))
+                   (center-y (round (+ min-y (/ (- max-y min-y) 2.0))))
+                   (win (selected-window)))
+        (shape-artist--goto-row-col center-y center-x)
+        (when (window-live-p win)
+          (set-window-hscroll
+           win (max 0 (- center-x (/ (window-width win) 2))))
+          (ignore-errors (recenter)))
+        (message "Centered diagram at (%d, %d)." center-y center-x)))))
+
 (defun shape-artist--ui-shapes-section ()
-  "Generate shape candidates section."
-  (if (and shape-artist--last-shapes-list
-           (> (length shape-artist--last-shapes-list) 0))
-      (let ((text "=== Shapes ===\n"))
-        (dotimes (i (length shape-artist--last-shapes-list))
-          (let* ((shape (nth i shape-artist--last-shapes-list))
-                 (marker (if (and (eq shape-artist--mode 'select)
-                                  (= i shape-artist--select-index))
-                             ">>>" "   "))
-                 (locked (if (and (eq shape-artist--locked-shape shape)
-                                  (eq shape-artist--mode 'shape-edit))
-                             " [LOCKED]" "")))
-            (setq text
-                  (concat text
-                          (format "%s %d: %s at (%d,%d) %dx%d%s\n"
-                                  marker (1+ i)
-                                  (cond
-                                   ((shape-artist-diagram-rectangle-p shape) "rect")
-                                   ((shape-artist-diagram-edge-p shape)
-                                    (format "edge[%s]" (oref shape edge-type)))
-                                   ((shape-artist-diagram-label-p shape) "label")
-                                   (t "node"))
-                                  (oref shape x) (oref shape y)
-                                  (oref shape width) (oref shape height)
-                                  locked)))))
-        text)
-    "=== Shapes ===\n(none detected)\n"))
+  "Generate shape tree section."
+  (if shape-artist--last-root
+      (concat "=== Shape Tree ===\n"
+              "Markers: > current, L locked, * selected\n"
+              (shape-artist--ui-tree-lines shape-artist--last-root 0))
+    "=== Shape Tree ===\n(none detected)\n"))
+
+(defun shape-artist--ui-tree-lines (node depth)
+  "Return sidebar tree lines for NODE and its children at DEPTH."
+  (let ((text (shape-artist--ui-tree-line node depth)))
+    (dolist (child (oref node children))
+      (setq text (concat text (shape-artist--ui-tree-lines child (1+ depth)))))
+    text))
+
+(defun shape-artist--ui-tree-line (node depth)
+  "Return one sidebar tree line for NODE at DEPTH."
+  (format "%s%s %s\n"
+          (make-string (* 2 depth) ?\s)
+          (shape-artist--ui-shape-markers node)
+          (shape-artist--ui-shape-summary node)))
+
+(defun shape-artist--ui-shape-markers (shape)
+  "Return compact current/locked/selected markers for SHAPE."
+  (if (shape-artist-diagram-root-p shape)
+      "   "
+    (let ((current (and (eq shape-artist--mode 'select)
+                        (eq shape (nth shape-artist--select-index
+                                       shape-artist--last-shapes-list))))
+          (locked (and (eq shape-artist--mode 'shape-edit)
+                       (eq shape shape-artist--locked-shape)))
+          (selected (and shape-artist--selected-shape-signatures
+                         (member (shape-artist-shapes-signature shape)
+                                 shape-artist--selected-shape-signatures))))
+      (format "%c%c%c"
+              (if current ?> ?\s)
+              (if locked ?L ?\s)
+              (if selected ?* ?\s)))))
+
+(defun shape-artist--ui-shape-summary (shape)
+  "Return a concise sidebar summary for SHAPE."
+  (cond
+   ((shape-artist-diagram-root-p shape)
+    "root")
+   ((shape-artist-diagram-rectangle-p shape)
+    (format "rect (%d,%d) %dx%d"
+            (oref shape x) (oref shape y)
+            (oref shape width) (oref shape height)))
+   ((shape-artist-diagram-edge-p shape)
+    (format "edge[%s] (%d,%d)->(%d,%d)"
+            (oref shape edge-type)
+            (oref shape x) (oref shape y)
+            (oref shape x2) (oref shape y2)))
+   ((shape-artist-diagram-label-p shape)
+    (format "label \"%s\" (%d,%d)"
+            (oref shape text) (oref shape x) (oref shape y)))
+   (t
+    (format "node (%d,%d) %dx%d"
+            (oref shape x) (oref shape y)
+            (oref shape width) (oref shape height)))))
 
 (defun shape-artist--ui-labels-section ()
   "Generate labels section."
@@ -118,14 +223,107 @@
   (format "=== Keys ===\n%s"
           (pcase shape-artist--mode
             ('move
-             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\nu        Toggle sidebar\nq        Quit\n")
+             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\nq        Quit\n")
             ('draw
-             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\nu        Undo\n")
+             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\n?        Quick actions\nz        Center diagram\nu        Undo\n")
             ('select
-             "n        Next shape\np        Prev shape\ng        Re-parse\nRET      Lock in shape\nESC      Cancel\nu        Toggle sidebar\n")
+             "n/p      Next/prev shape\nt        Toggle candidate\nT        Select all\nc        Clear selection\ng        Re-parse\nRET      Lock/edit\nESC      Cancel\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\n")
             ('shape-edit
-             "e        Edit label\nm        Move shape\nr        Resize\nx        Replace type\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\nu        Toggle sidebar\n")
+             "H/J/K/L  Move shape/group\n>/<      Wider/narrower or edge +/-\n+/_      Taller/shorter or edge +/-\n[/]      Grow/shrink from left\n{/}      Grow/shrink from top\ne        Edit label\nm/r      Prompt move/resize\nx        Cycle style/arrow\ns        Prompt style\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\n?        Quick actions\no        Outline tree\nz        Center diagram\nu        Toggle sidebar\n")
             (_ ""))))
+
+(defun shape-artist-ui-show-outline ()
+  "Show the full outline/tree buffer for the current artist buffer."
+  (interactive)
+  (require 'shape-artist-diagram-outline)
+  (shape-artist-diagram-outline-show))
+
+(defun shape-artist--ui-quick-actions ()
+  "Return mode-sensitive quick actions for the command menu."
+  (let ((mode shape-artist--mode))
+    (cl-remove-if-not
+     (lambda (action)
+       (let ((modes (nth 0 action)))
+         (or (memq 'all modes) (memq mode modes))))
+     '(((all) "a" "Show sidebar" shape-artist-ui-show)
+       ((all) "u" "Toggle sidebar" shape-artist-ui-toggle)
+       ((all) "o" "Show outline tree" shape-artist-ui-show-outline)
+       ((all) "z" "Center diagram" shape-artist-ui-center-diagram)
+       ((all) "g" "Parse / refresh shapes" shape-artist-shapes-parse)
+       ((move) "SPC" "Start drawing from cursor" shape-artist-enter-draw-and-anchor)
+       ((move) "d" "Enter draw mode" shape-artist-enter-draw)
+       ((move) "C-n" "Select shapes" shape-artist-select-start)
+       ((draw) "RET" "Commit shape and exit draw" shape-artist-commit-and-exit)
+       ((draw) "C-RET" "Commit shape and keep drawing" shape-artist-commit-stay)
+       ((draw) "p" "Pick draw tool" shape-artist-pick-tool)
+       ((draw) "u" "Undo draw step" shape-artist-undo)
+       ((select) "n" "Next candidate" shape-artist-select-next)
+       ((select) "p" "Previous candidate" shape-artist-select-prev)
+       ((select) "t" "Toggle current candidate" shape-artist-select-toggle-current)
+       ((select) "T" "Select all candidates" shape-artist-select-all)
+       ((select) "c" "Clear selected candidates" shape-artist-select-clear-selected)
+       ((select) "RET" "Lock/edit selection" shape-artist-select-confirm)
+       ((shape-edit) "H/J/K/L" "Move locked shape or group" shape-artist-shape-move)
+       ((shape-edit) "e" "Edit label" shape-artist-shape-edit-label)
+       ((shape-edit) "m" "Prompt move" shape-artist-shape-move)
+       ((shape-edit) "r" "Prompt resize" shape-artist-shape-resize)
+       ((shape-edit) "x" "Cycle style or arrow" shape-artist-shape-cycle-style)
+       ((shape-edit) "s" "Prompt style" shape-artist-shape-set-style)
+       ((shape-edit) "ESC" "Exit shape edit" shape-artist-shape-edit-exit)))))
+
+(defun shape-artist--ui-quick-action-label (action)
+  "Return display label for quick ACTION."
+  (format "%-8s %s" (nth 1 action) (nth 2 action)))
+
+(defun shape-artist-ui-completing-read-menu ()
+  "Show a mode-sensitive completing-read command menu."
+  (interactive)
+  (let* ((actions (shape-artist--ui-quick-actions))
+         (choices (mapcar (lambda (action)
+                            (cons (shape-artist--ui-quick-action-label action)
+                                  (nth 3 action)))
+                          actions))
+         (choice (completing-read "Shape Artist action: " choices nil t)))
+    (call-interactively (cdr (assoc choice choices)))))
+
+(defun shape-artist-ui--ensure-transient ()
+  "Define and return the optional Transient command menu when available."
+  (when (require 'transient nil t)
+    (unless shape-artist--ui-transient-defined
+      (eval
+       `(,(intern "transient-define-prefix") shape-artist-ui-transient ()
+         "Shape Artist command palette."
+         [["Discover"
+           ("?" "Mode actions..." shape-artist-ui-completing-read-menu)
+           ("a" "Show sidebar" shape-artist-ui-show)
+           ("u" "Toggle sidebar" shape-artist-ui-toggle)
+           ("o" "Outline tree" shape-artist-ui-show-outline)
+           ("z" "Center diagram" shape-artist-ui-center-diagram)
+           ("g" "Parse/refresh" shape-artist-shapes-parse)]
+          ["Move / Draw"
+           ("SPC" "Draw from cursor" shape-artist-enter-draw-and-anchor)
+           ("d" "Enter draw" shape-artist-enter-draw)
+           ("p" "Pick draw char" shape-artist-pick-tool)
+           ("RET" "Commit" shape-artist-commit-and-exit)]
+          ["Select / Edit"
+           ("n" "Next candidate" shape-artist-select-next)
+           ("t" "Toggle candidate" shape-artist-select-toggle-current)
+           ("T" "Select all" shape-artist-select-all)
+           ("e" "Edit label" shape-artist-shape-edit-label)
+           ("x" "Cycle style" shape-artist-shape-cycle-style)]]))
+      (setq shape-artist--ui-transient-defined t))
+    (fboundp 'shape-artist-ui-transient)))
+
+(defun shape-artist-ui-command-menu ()
+  "Show the Shape Artist command menu.
+
+Use Transient when it is available and `shape-artist-ui-use-transient' is
+non-nil.  Otherwise use the dependency-free `completing-read' menu."
+  (interactive)
+  (if (and shape-artist-ui-use-transient
+           (shape-artist-ui--ensure-transient))
+      (call-interactively 'shape-artist-ui-transient)
+    (shape-artist-ui-completing-read-menu)))
 
 (defun shape-artist--ui-locked-shape-section ()
   "Generate locked shape details section (for SHAPE-EDIT mode)."
@@ -158,6 +356,8 @@
                          (shape-artist--ui-cursor-section)
                          (shape-artist--ui-anchor-section)
                          (shape-artist--ui-nonblank-section)
+                         "\n"
+                         (shape-artist--ui-layout-section)
                          "\n"
                          (shape-artist--ui-shapes-section)
                          "\n"

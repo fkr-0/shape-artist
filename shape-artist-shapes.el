@@ -252,6 +252,243 @@
     (shape-artist-shapes-parse)
     (or (shape-artist-shapes-find-by-signature sig) shape)))
 
+(defun shape-artist-shapes--rect-attachment-signature (shape)
+  "Return the attachment signature for rectangle SHAPE."
+  (list (oref shape x) (oref shape y) (oref shape width) (oref shape height)))
+
+(defun shape-artist-shapes--attachment-on-rect-p (attachment rect-sig)
+  "Return non-nil when ATTACHMENT points at RECT-SIG."
+  (and attachment (equal (plist-get attachment :rect) rect-sig)))
+
+(defun shape-artist-shapes--attachment-on-any-rect-p (attachment rect-sigs)
+  "Return non-nil when ATTACHMENT points at one of RECT-SIGS."
+  (and attachment (member (plist-get attachment :rect) rect-sigs)))
+
+(defun shape-artist-shapes--edge-move-plan-for-rect (edge rect dx dy)
+  "Return a straight-edge redraw plan for EDGE stuck to RECT by DX/DY.
+
+This is the first routing slice: attached endpoints move with the rectangle.
+If that would make a straight edge non-straight, the free axis of the edge is
+translated so the connector remains parseable as one straight edge."
+  (let* ((rect-sig (shape-artist-shapes--rect-attachment-signature rect))
+         (start-attachment (and (slot-boundp edge 'start-attachment)
+                                (oref edge start-attachment)))
+         (end-attachment (and (slot-boundp edge 'end-attachment)
+                              (oref edge end-attachment)))
+         (start-stuck (shape-artist-shapes--attachment-on-rect-p
+                       start-attachment rect-sig))
+         (end-stuck (shape-artist-shapes--attachment-on-rect-p
+                     end-attachment rect-sig)))
+    (when (or start-stuck end-stuck)
+      (let ((x (oref edge x))
+            (y (oref edge y))
+            (x2 (oref edge x2))
+            (y2 (oref edge y2)))
+        (cond
+         ((shape-artist--edge-horizontal-p edge)
+          (when (/= dy 0)
+            (setq y (+ y dy)
+                  y2 (+ y2 dy)))
+          (when start-stuck
+            (setq x (+ x dx)))
+          (when end-stuck
+            (setq x2 (+ x2 dx))))
+         ((shape-artist--edge-vertical-p edge)
+          (when (/= dx 0)
+            (setq x (+ x dx)
+                  x2 (+ x2 dx)))
+          (when start-stuck
+            (setq y (+ y dy)))
+          (when end-stuck
+            (setq y2 (+ y2 dy)))))
+        (list :edge edge :style (shape-artist-shapes-edge-style edge)
+              :x x :y y :x2 x2 :y2 y2)))))
+
+(defun shape-artist-shapes--attached-edge-plans (rect dx dy)
+  "Return redraw plans for edges attached to RECT moving by DX/DY."
+  (cl-remove nil
+             (mapcar (lambda (shape)
+                       (when (shape-artist-diagram-edge-p shape)
+                         (shape-artist-shapes--edge-move-plan-for-rect
+                          shape rect dx dy)))
+                     shape-artist--last-shapes-list)))
+
+(defun shape-artist-shapes--edge-move-plan-for-rects (edge rect-sigs dx dy)
+  "Return a redraw plan for EDGE stuck to RECT-SIGS moving by DX/DY."
+  (let* ((start-attachment (and (slot-boundp edge 'start-attachment)
+                                (oref edge start-attachment)))
+         (end-attachment (and (slot-boundp edge 'end-attachment)
+                              (oref edge end-attachment)))
+         (start-stuck (shape-artist-shapes--attachment-on-any-rect-p
+                       start-attachment rect-sigs))
+         (end-stuck (shape-artist-shapes--attachment-on-any-rect-p
+                     end-attachment rect-sigs)))
+    (when (or start-stuck end-stuck)
+      (let ((x (oref edge x))
+            (y (oref edge y))
+            (x2 (oref edge x2))
+            (y2 (oref edge y2)))
+        (cond
+         ((shape-artist--edge-horizontal-p edge)
+          (when (/= dy 0)
+            (setq y (+ y dy)
+                  y2 (+ y2 dy)))
+          (when start-stuck (setq x (+ x dx)))
+          (when end-stuck (setq x2 (+ x2 dx))))
+         ((shape-artist--edge-vertical-p edge)
+          (when (/= dx 0)
+            (setq x (+ x dx)
+                  x2 (+ x2 dx)))
+          (when start-stuck (setq y (+ y dy)))
+          (when end-stuck (setq y2 (+ y2 dy)))))
+        (list :edge edge :style (shape-artist-shapes-edge-style edge)
+              :x x :y y :x2 x2 :y2 y2)))))
+
+(defun shape-artist-shapes--attached-edge-plans-for-rects (rects dx dy)
+  "Return redraw plans for edges attached to RECTS moving by DX/DY."
+  (let ((rect-sigs (mapcar #'shape-artist-shapes--rect-attachment-signature rects)))
+    (cl-remove nil
+               (mapcar (lambda (shape)
+                         (when (shape-artist-diagram-edge-p shape)
+                           (shape-artist-shapes--edge-move-plan-for-rects
+                            shape rect-sigs dx dy)))
+                       shape-artist--last-shapes-list))))
+
+(defun shape-artist-shapes--plain-edge-move-plan (edge dx dy)
+  "Return a full-edge move plan for EDGE by DX/DY."
+  (list :edge edge :style (shape-artist-shapes-edge-style edge)
+        :x (+ (oref edge x) dx) :y (+ (oref edge y) dy)
+        :x2 (+ (oref edge x2) dx) :y2 (+ (oref edge y2) dy)))
+
+(defun shape-artist-shapes--add-selected-edge-plans (plans edges dx dy)
+  "Add full-move plans for selected EDGES not already present in PLANS."
+  (dolist (edge edges plans)
+    (unless (cl-find edge plans :key (lambda (plan) (plist-get plan :edge)))
+      (push (shape-artist-shapes--plain-edge-move-plan edge dx dy) plans))))
+
+(defun shape-artist-shapes--plan-shift (plans dcol drow)
+  "Shift all edge PLANS by DCOL and DROW."
+  (dolist (plan plans)
+    (setf (plist-get plan :x) (+ (plist-get plan :x) dcol))
+    (setf (plist-get plan :x2) (+ (plist-get plan :x2) dcol))
+    (setf (plist-get plan :y) (+ (plist-get plan :y) drow))
+    (setf (plist-get plan :y2) (+ (plist-get plan :y2) drow))))
+
+(defun shape-artist-shapes--plans-min-x (plans fallback)
+  "Return the minimum X coordinate among PLANS and FALLBACK."
+  (let ((min-x fallback))
+    (dolist (plan plans min-x)
+      (setq min-x (min min-x (plist-get plan :x) (plist-get plan :x2))))))
+
+(defun shape-artist-shapes--plans-min-y (plans fallback)
+  "Return the minimum Y coordinate among PLANS and FALLBACK."
+  (let ((min-y fallback))
+    (dolist (plan plans min-y)
+      (setq min-y (min min-y (plist-get plan :y) (plist-get plan :y2))))))
+
+(defun shape-artist-shapes--rect-plans-min-x (plans fallback)
+  "Return the minimum X coordinate among rectangle PLANS and FALLBACK."
+  (let ((min-x fallback))
+    (dolist (plan plans min-x)
+      (setq min-x (min min-x (plist-get plan :new-x))))))
+
+(defun shape-artist-shapes--rect-plans-min-y (plans fallback)
+  "Return the minimum Y coordinate among rectangle PLANS and FALLBACK."
+  (let ((min-y fallback))
+    (dolist (plan plans min-y)
+      (setq min-y (min min-y (plist-get plan :new-y))))))
+
+(defun shape-artist-shapes--rect-plan-shift (plans dcol drow)
+  "Shift rectangle PLANS by DCOL and DROW."
+  (dolist (plan plans)
+    (setf (plist-get plan :new-x) (+ (plist-get plan :new-x) dcol))
+    (setf (plist-get plan :new-y) (+ (plist-get plan :new-y) drow))))
+
+(defun shape-artist-shapes--rectangle-move-plan (shape dx dy)
+  "Return a redraw plan for rectangle SHAPE moving by DX/DY."
+  (list :shape shape
+        :style (shape-artist-shapes-border-style shape)
+        :interior (shape-artist--read-rect-interior
+                   (oref shape x) (oref shape y)
+                   (oref shape width) (oref shape height))
+        :new-x (+ (oref shape x) dx)
+        :new-y (+ (oref shape y) dy)
+        :width (oref shape width)
+        :height (oref shape height)))
+
+(defun shape-artist-shapes-move-group (shapes dx dy)
+  "Move SHAPES by DX and DY in one redraw pass.
+
+Connected straight edges attached to moved rectangles are redrawn once, so a
+selected box group can keep its connectors attached while moving."
+  (let* ((rects (cl-remove-if-not #'shape-artist-diagram-rectangle-p shapes))
+         (selected-edges (cl-remove-if-not #'shape-artist-diagram-edge-p shapes))
+         (rect-plans (mapcar (lambda (rect)
+                               (shape-artist-shapes--rectangle-move-plan rect dx dy))
+                             rects))
+         (edge-plans (shape-artist-shapes--add-selected-edge-plans
+                      (shape-artist-shapes--attached-edge-plans-for-rects rects dx dy)
+                      selected-edges dx dy))
+         (need-left (max 0 (- (min (shape-artist-shapes--rect-plans-min-x
+                                    rect-plans most-positive-fixnum)
+                                   (shape-artist-shapes--plans-min-x
+                                    edge-plans most-positive-fixnum)))))
+         (need-top (max 0 (- (min (shape-artist-shapes--rect-plans-min-y
+                                   rect-plans most-positive-fixnum)
+                                  (shape-artist-shapes--plans-min-y
+                                   edge-plans most-positive-fixnum))))))
+    (when (> need-left 0)
+      (dotimes (_ need-left) (shape-artist--expand-left))
+      (shape-artist--shift-all-shapes need-left 0)
+      (shape-artist-shapes--rect-plan-shift rect-plans need-left 0)
+      (shape-artist-shapes--plan-shift edge-plans need-left 0))
+    (when (> need-top 0)
+      (dotimes (_ need-top) (shape-artist--expand-top))
+      (shape-artist--shift-all-shapes 0 need-top)
+      (shape-artist-shapes--rect-plan-shift rect-plans 0 need-top)
+      (shape-artist-shapes--plan-shift edge-plans 0 need-top))
+    (dolist (plan edge-plans)
+      (let ((edge (plist-get plan :edge)))
+        (shape-artist--erase-edge (oref edge x) (oref edge y)
+                                  (oref edge x2) (oref edge y2))))
+    (dolist (plan rect-plans)
+      (let ((shape (plist-get plan :shape)))
+        (shape-artist--erase-rect (oref shape x) (oref shape y)
+                                  (oref shape width) (oref shape height))))
+    (dolist (shape shape-artist--last-shapes-list)
+      (when (and (shape-artist-diagram-rectangle-p shape)
+                 (not (memq shape rects)))
+        (shape-artist--draw-rect-border
+         (oref shape x) (oref shape y) (oref shape width) (oref shape height)
+         (shape-artist--style-char (shape-artist-shapes-border-style shape)))))
+    (dolist (plan rect-plans)
+      (let ((shape (plist-get plan :shape)))
+        (oset shape x (plist-get plan :new-x))
+        (oset shape y (plist-get plan :new-y))
+        (shape-artist--draw-rect-border
+         (oref shape x) (oref shape y)
+         (plist-get plan :width) (plist-get plan :height)
+         (shape-artist--style-char (plist-get plan :style)))
+        (shape-artist--write-rect-interior
+         (oref shape x) (oref shape y)
+         (plist-get plan :width) (plist-get plan :height)
+         (plist-get plan :interior))))
+    (dolist (plan edge-plans)
+      (let ((edge (plist-get plan :edge)))
+        (oset edge x (plist-get plan :x))
+        (oset edge y (plist-get plan :y))
+        (oset edge x2 (plist-get plan :x2))
+        (oset edge y2 (plist-get plan :y2))
+        (shape-artist--draw-edge (oref edge x) (oref edge y)
+                                 (oref edge x2) (oref edge y2)
+                                 (plist-get plan :style))))
+    (shape-artist-shapes-parse)
+    (cl-remove nil
+               (mapcar (lambda (shape)
+                         (shape-artist-shapes-find-by-signature
+                          (shape-artist-shapes-signature shape)))
+                       shapes))))
+
 (defun shape-artist-shapes-edit-label (shape &optional align)
   "Edit label inside rectangle SHAPE using ALIGN."
   (when (and shape (shape-artist-diagram-rectangle-p shape))
@@ -300,21 +537,43 @@
          (h (oref shape height))
          (style (shape-artist-shapes-border-style shape))
          (interior (shape-artist--read-rect-interior (oref shape x) (oref shape y) w h))
-         (need-left (max 0 (- (+ (oref shape x) dx))))
-         (need-top (max 0 (- (+ (oref shape y) dy)))))
+         (attached-edge-plans (shape-artist-shapes--attached-edge-plans shape dx dy))
+         (new-x (+ (oref shape x) dx))
+         (new-y (+ (oref shape y) dy))
+         (need-left (max 0 (- (shape-artist-shapes--plans-min-x
+                               attached-edge-plans new-x))))
+         (need-top (max 0 (- (shape-artist-shapes--plans-min-y
+                              attached-edge-plans new-y)))))
     (when (> need-left 0)
       (dotimes (_ need-left) (shape-artist--expand-left))
-      (shape-artist--shift-all-shapes need-left 0))
+      (shape-artist--shift-all-shapes need-left 0)
+      (shape-artist-shapes--plan-shift attached-edge-plans need-left 0)
+      (setq new-x (+ new-x need-left)))
     (when (> need-top 0)
       (dotimes (_ need-top) (shape-artist--expand-top))
-      (shape-artist--shift-all-shapes 0 need-top))
+      (shape-artist--shift-all-shapes 0 need-top)
+      (shape-artist-shapes--plan-shift attached-edge-plans 0 need-top)
+      (setq new-y (+ new-y need-top)))
+    (dolist (plan attached-edge-plans)
+      (let ((edge (plist-get plan :edge)))
+        (shape-artist--erase-edge (oref edge x) (oref edge y)
+                                  (oref edge x2) (oref edge y2))))
     (shape-artist--erase-rect (oref shape x) (oref shape y) w h)
-    (oset shape x (+ (oref shape x) dx))
-    (oset shape y (+ (oref shape y) dy))
+    (oset shape x new-x)
+    (oset shape y new-y)
     (shape-artist--redraw-other-rectangles shape)
     (shape-artist--draw-rect-border (oref shape x) (oref shape y) w h
                                     (shape-artist--style-char style))
     (shape-artist--write-rect-interior (oref shape x) (oref shape y) w h interior)
+    (dolist (plan attached-edge-plans)
+      (let ((edge (plist-get plan :edge)))
+        (oset edge x (plist-get plan :x))
+        (oset edge y (plist-get plan :y))
+        (oset edge x2 (plist-get plan :x2))
+        (oset edge y2 (plist-get plan :y2))
+        (shape-artist--draw-edge (oref edge x) (oref edge y)
+                                 (oref edge x2) (oref edge y2)
+                                 (plist-get plan :style))))
     (shape-artist--reparse-and-find shape)))
 
 (defun shape-artist-shapes--move-edge (edge dx dy)

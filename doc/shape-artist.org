@@ -90,6 +90,9 @@ The default mode.  Navigate the canvas with vim-style keys.
 | =RET=   | Commit previewed shape           |
 | =d=     | Enter DRAW mode (no anchor)      |
 | =C-n=   | Enter SELECT mode                |
+| =?=     | Open mode-aware quick action menu |
+| =o=     | Show outline tree                |
+| =z=     | Center parsed diagram            |
 | =u=     | Toggle sidebar                   |
 | =a=     | Show sidebar                     |
 | =q=     | Quit artist mode                 |
@@ -107,6 +110,8 @@ characters (=|= for vertical, =-= for horizontal, =+= for diagonal).
 | =C-RET=     | Commit shape and stay in DRAW  |
 | =ESC=       | Cancel and exit to MOVE        |
 | =p=         | Pick drawing character          |
+| =?=         | Open mode-aware quick action menu |
+| =z=         | Center parsed diagram           |
 | =u=         | Undo last change               |
 
 ** SELECT mode
@@ -123,6 +128,9 @@ Cycle through detected shapes.
 | =g=     | Re-parse buffer               |
 | =RET=   | Lock shape or selected group (enter EDIT) |
 | =ESC=   | Cancel and return to MOVE     |
+| =?=     | Open mode-aware quick action menu |
+| =o=     | Show outline tree             |
+| =z=     | Center parsed diagram         |
 | =u=     | Toggle sidebar                |
 
 ** SHAPE-EDIT mode
@@ -143,7 +151,20 @@ Edit the locked-in shape.
 | =x=       | Cycle border style or edge arrow style       |
 | =s=       | Prompt for rectangle or edge style           |
 | =ESC=     | Exit to MOVE                                 |
+| =?=       | Open mode-aware quick action menu            |
+| =o=       | Show outline tree                            |
+| =z=       | Center parsed diagram                        |
 | =u=       | Toggle sidebar                               |
+
+** Sidebar and Quick Actions
+
+The sidebar shows a compact shape tree, including root, rectangles, and edges.
+Tree markers expose interaction state at a glance: =>= marks the current SELECT
+candidate, =L= marks the locked SHAPE-EDIT target, and =*= marks a persistent
+multi-selection member.  The sidebar also shows parsed diagram bounds, size,
+and shape count.  The =?= quick action menu uses Transient when available and
+falls back to =completing-read= otherwise.  =o= opens the larger outline tree
+buffer for navigation, and =z= centers the view on the parsed diagram bounds.
 
 
 * End-to-End Diagram Manipulation Workflow
@@ -179,9 +200,18 @@ diagram manipulation: draw, parse, select, multi-select, lock, move, resize,
 label, style, arrows, outline, and sidebar updates all have direct commands and
 end-to-end regression tests.
 
+Straight connectors also carry endpoint attachment metadata.  Each attached
+endpoint records the rectangle geometry, touched side, and side offset.  Shape
+movement uses that metadata for the first sticking/rerouting slice:
+
+- moving one rectangle also redraws straight dangling connectors attached to it;
+- moving a selected group of rectangles redraws shared straight connectors once;
+- if an attached endpoint moves perpendicular to a straight edge, the edge is
+  translated on that free axis so it stays parseable as a straight connector.
+
 Remaining larger design areas are explicit future work rather than hidden stubs:
 
-- Orthogonal edge rerouting and endpoint attachment to boxes.
+- Multi-segment orthogonal rerouting between boxes that move independently.
 - Batch alignment/distribution commands beyond grouped move/resize.
 - Freeform non-rectangular shapes such as diamonds.
 

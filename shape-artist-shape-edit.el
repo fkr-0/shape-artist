@@ -65,8 +65,12 @@
   (interactive)
   (let ((dx (or dx (read-number "dx: " 0)))
         (dy (or dy (read-number "dy: " 0))))
-    (shape-artist-shape-edit--apply
-     (lambda (shape) (shape-artist-shapes-move shape dx dy)))))
+    (if shape-artist--selected-shape-signatures
+        (shape-artist-shape-edit--set-targets
+         (shape-artist-shapes-move-group
+          (shape-artist-shapes-selected) dx dy))
+      (shape-artist-shape-edit--apply
+       (lambda (shape) (shape-artist-shapes-move shape dx dy))))))
 
 (defun shape-artist-shape-move-left (&optional count)
   "Move targets left by COUNT cells."

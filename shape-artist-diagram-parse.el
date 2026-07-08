@@ -49,7 +49,11 @@
    (arrow-start :initarg :arrow-start :initform nil
                 :documentation "Non-nil when the start point has an arrow head.")
    (arrow-end :initarg :arrow-end :initform nil
-              :documentation "Non-nil when the end point has an arrow head."))
+              :documentation "Non-nil when the end point has an arrow head.")
+   (start-attachment :initarg :start-attachment :initform nil
+                     :documentation "Attachment plist for the start endpoint.")
+   (end-attachment :initarg :end-attachment :initform nil
+                   :documentation "Attachment plist for the end endpoint."))
   :documentation "An edge (line or arrow connector) in the diagram.")
 
 (defclass shape-artist-diagram-label (shape-artist-diagram-node)
@@ -306,21 +310,52 @@ Return a list of \\='shape-artist-diagram-edge objects."
 
 Sets edge-type slot: \\='connected, \\='disconnected, or \\='free."
   (dolist (edge edges)
-    (let ((adjacent-count 0))
-      ;; Check start point adjacency
-      (when (shape-artist-diagram--point-adjacent-to-rect-p
-             (oref edge x) (oref edge y) rectangles)
-        (cl-incf adjacent-count))
-      ;; Check end point adjacency
-      (when (shape-artist-diagram--point-adjacent-to-rect-p
-             (oref edge x2) (oref edge y2) rectangles)
-        (cl-incf adjacent-count))
+    (let ((start-attachment
+           (shape-artist-diagram--point-attachment
+            (oref edge x) (oref edge y) rectangles))
+          (end-attachment
+           (shape-artist-diagram--point-attachment
+            (oref edge x2) (oref edge y2) rectangles)))
+      (oset edge start-attachment start-attachment)
+      (oset edge end-attachment end-attachment)
       (oset edge edge-type
-            (pcase adjacent-count
+            (pcase (+ (if start-attachment 1 0)
+                      (if end-attachment 1 0))
               (2 'connected)
               (1 'disconnected)
               (_ 'free)))))
   edges)
+
+(defun shape-artist-diagram--rect-attachment-signature (rect)
+  "Return the stable attachment signature for RECT."
+  (list (oref rect x) (oref rect y) (oref rect width) (oref rect height)))
+
+(defun shape-artist-diagram--point-attachment (x y rectangles)
+  "Return endpoint attachment metadata for point X,Y near RECTANGLES.
+
+The return value is a plist with :rect, :side, and :offset.  :rect is a
+geometry signature, :side is one of `left', `right', `top', or `bottom', and
+:offset is the coordinate offset along that side."
+  (cl-some
+   (lambda (rect)
+     (let ((rx (oref rect x))
+           (ry (oref rect y))
+           (rw (oref rect width))
+           (rh (oref rect height)))
+       (cond
+        ((and (= x (1- rx)) (<= ry y) (<= y (+ ry rh)))
+         (list :rect (shape-artist-diagram--rect-attachment-signature rect)
+               :side 'left :offset (- y ry)))
+        ((and (= x (+ rx rw 1)) (<= ry y) (<= y (+ ry rh)))
+         (list :rect (shape-artist-diagram--rect-attachment-signature rect)
+               :side 'right :offset (- y ry)))
+        ((and (= y (1- ry)) (<= rx x) (<= x (+ rx rw)))
+         (list :rect (shape-artist-diagram--rect-attachment-signature rect)
+               :side 'top :offset (- x rx)))
+        ((and (= y (+ ry rh 1)) (<= rx x) (<= x (+ rx rw)))
+         (list :rect (shape-artist-diagram--rect-attachment-signature rect)
+               :side 'bottom :offset (- x rx))))))
+   rectangles))
 
 (defun shape-artist-diagram--point-adjacent-to-rect-p (x y rectangles)
   "Return t if point (X,Y) is adjacent to any rectangle in RECTANGLES."

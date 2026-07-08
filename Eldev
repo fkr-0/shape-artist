@@ -7,3 +7,8 @@
 (eldev-add-extra-dependencies 'test 'evil)
 
 (eldev-add-loading-roots 'test "tests")
+
+;; `trunk/' contains untracked prototype/reference modules imported from the
+;; Artist-Assist experiments.  They intentionally mention incomplete aa-* modules
+;; and must not be treated as production Shape Artist sources.
+(setq eldev-standard-excludes `(:or ,eldev-standard-excludes "./trunk/"))

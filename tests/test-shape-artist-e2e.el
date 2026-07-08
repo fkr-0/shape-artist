@@ -71,6 +71,17 @@
       (should (eq (shape-artist-shapes-border-style shape) 'heavy)))
     (should (= (shape-artist-shapes-count) 1))))
 
+(ert-deftest test-shape-artist-e2e-discoverability-keybindings ()
+  "Quick help and outline helpers are discoverable from the active keymap."
+  (test-shape-artist-e2e-with-artist-buffer
+      "+---+\n|   |\n+---+"
+    (should (eq (key-binding (kbd "?") t)
+                #'shape-artist-ui-command-menu))
+    (should (eq (key-binding (kbd "o") t)
+                #'shape-artist-ui-show-outline))
+    (should (eq (key-binding (kbd "z") t)
+                #'shape-artist-ui-center-diagram))))
+
 (ert-deftest test-shape-artist-e2e-select-edit-preserves-lock-across-repeated-ops ()
   "Repeated SHAPE-EDIT commands keep the lock on the current parsed shape."
   (test-shape-artist-e2e-with-artist-buffer
@@ -183,6 +194,30 @@
                                               shape-artist--last-shapes-list))
                     #'<)))
       (should (equal ys '(1 1))))))
+
+(ert-deftest test-shape-artist-e2e-multi-select-move-sticks-connector ()
+  "Key-driven group movement keeps a connector between selected boxes attached."
+  (test-shape-artist-e2e-with-artist-buffer
+      "+--+   +--+\n|  |---|  |\n+--+   +--+\n           "
+    (shape-artist-shapes-parse)
+    (test-shape-artist-e2e--press "C-n")
+    (test-shape-artist-e2e--press "t")
+    (test-shape-artist-e2e--press "n")
+    (test-shape-artist-e2e--press "t")
+    (test-shape-artist-e2e--press "RET")
+    (test-shape-artist-e2e--press "J")
+    (shape-artist-shapes-parse)
+    (let ((edges (cl-remove-if-not #'shape-artist-diagram-edge-p
+                                   shape-artist--last-shapes-list))
+          (ys (sort (mapcar (lambda (shape) (oref shape y))
+                            (cl-remove-if-not #'shape-artist-diagram-rectangle-p
+                                              shape-artist--last-shapes-list))
+                    #'<)))
+      (should (equal ys '(1 1)))
+      (should (= (length edges) 1))
+      (should (= (oref (car edges) y) 2))
+      (should (= (oref (car edges) y2) 2))
+      (should (eq (oref (car edges) edge-type) 'connected)))))
 
 (ert-deftest test-shape-artist-e2e-parser-arrow-connectors ()
   "Parser keeps arrow metadata on horizontal and vertical connectors."
