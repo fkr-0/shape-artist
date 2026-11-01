@@ -77,7 +77,10 @@
                         (file-name-directory
                          (or load-file-name default-directory))))
 
-;; Run tests
-(ert-run-tests-batch-and-exit)
+;; Run tests.  SHAPE_ARTIST_TEST_SELECTOR (a regexp over test names) narrows the
+;; run, which is handy for timing or debugging one area under coverage.
+(ert-run-tests-batch-and-exit
+ (let ((selector (getenv "SHAPE_ARTIST_TEST_SELECTOR")))
+   (if (and selector (not (string-empty-p selector))) selector t)))
 
 ;;; test-runner.el ends here

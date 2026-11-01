@@ -207,7 +207,7 @@ Return SHAPES."
                      (or (plist-get b :id) ""))))))
 
 (defun shape-artist-metadata--id-suffix (id)
-  "Return numeric suffix from ID when it matches the current ID prefix."
+  "Return numeric suffix from ID when it fits the current ID prefix."
   (when (and (stringp id)
              (string-match
               (concat "\\`" (regexp-quote shape-artist-metadata-id-prefix)

@@ -39,9 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Instrumented (edebug) runs are 10 to 20 times slower on Emacs 29 than on
+      # a current Emacs, so coverage runs on the newest one.
       - uses: purcell/setup-emacs@master
         with:
-          version: '29.1'
+          version: 'snapshot'
 
       - uses: emacs-eldev/setup-eldev@v1
 
