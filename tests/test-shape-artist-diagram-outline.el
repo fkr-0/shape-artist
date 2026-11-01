@@ -95,7 +95,7 @@
       (shape-artist-diagram-outline-refresh)
       (let ((new-content (buffer-string)))
         (should (string-match-p "\\[rect" new-content))
-        (should (= (length (string-split new-content "\\[rect")) 3))))))
+        (should (= (length (split-string new-content "\\[rect")) 3))))))
 
 (ert-deftest test-shape-artist-outline-refresh-repositions ()
   "Test that refresh moves cursor to point-min."
@@ -134,7 +134,7 @@
       (shape-artist-diagram--outline-update)
       (let ((new-content (buffer-string)))
         (should (string-match-p "\\[rect" new-content))
-        (should (= (length (string-split new-content "\\[rect")) 3))))))
+        (should (= (length (split-string new-content "\\[rect")) 3))))))
 
 (ert-deftest test-shape-artist-outline-update-hook-no-buffer ()
   "Test that update hook is a no-op when outline buffer doesn't exist."

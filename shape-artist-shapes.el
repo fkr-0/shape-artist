@@ -406,10 +406,12 @@ translated so the connector remains parseable as one straight edge."
 (defun shape-artist-shapes--plan-shift (plans dcol drow)
   "Shift all edge PLANS by DCOL and DROW."
   (dolist (plan plans)
-    (setf (plist-get plan :x) (+ (plist-get plan :x) dcol))
-    (setf (plist-get plan :x2) (+ (plist-get plan :x2) dcol))
-    (setf (plist-get plan :y) (+ (plist-get plan :y) drow))
-    (setf (plist-get plan :y2) (+ (plist-get plan :y2) drow))))
+    ;; `plist-put' mutates in place because every plan already has these keys;
+    ;; `(setf (plist-get ...))' does not exist in Emacs 27.1.
+    (plist-put plan :x (+ (plist-get plan :x) dcol))
+    (plist-put plan :x2 (+ (plist-get plan :x2) dcol))
+    (plist-put plan :y (+ (plist-get plan :y) drow))
+    (plist-put plan :y2 (+ (plist-get plan :y2) drow))))
 
 (defun shape-artist-shapes--plans-min-x (plans fallback)
   "Return the minimum X coordinate among PLANS and FALLBACK."
@@ -438,8 +440,8 @@ translated so the connector remains parseable as one straight edge."
 (defun shape-artist-shapes--rect-plan-shift (plans dcol drow)
   "Shift rectangle PLANS by DCOL and DROW."
   (dolist (plan plans)
-    (setf (plist-get plan :new-x) (+ (plist-get plan :new-x) dcol))
-    (setf (plist-get plan :new-y) (+ (plist-get plan :new-y) drow))))
+    (plist-put plan :new-x (+ (plist-get plan :new-x) dcol))
+    (plist-put plan :new-y (+ (plist-get plan :new-y) drow))))
 
 (defun shape-artist-shapes--rectangle-move-plan (shape dx dy)
   "Return a redraw plan for rectangle SHAPE moving by DX/DY."

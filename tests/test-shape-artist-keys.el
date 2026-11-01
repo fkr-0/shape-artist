@@ -253,9 +253,29 @@ the dispatcher intentionally does nothing in that mode.")
      keymap)
     commands))
 
+(defun test-shape-artist-keys--find-menu (title)
+  "Return the menu keymap titled TITLE in the mode's menu bar, or nil.
+Emacs versions differ in the key and binding format they use for a menu, so
+search by title instead of looking up a fixed key."
+  (let ((bar (lookup-key shape-artist-core-mode-map [menu-bar]))
+        (found nil))
+    (when (keymapp bar)
+      (map-keymap
+       (lambda (_event binding)
+         (let ((candidate
+                (cond ((and (consp binding) (eq (car binding) 'menu-item))
+                       (cons (nth 1 binding) (nth 2 binding)))
+                      ((and (consp binding) (stringp (car binding)))
+                       (cons (car binding) (cdr binding))))))
+           (when (and candidate (equal (car candidate) title)
+                      (keymapp (cdr candidate)))
+             (setq found (cdr candidate)))))
+       bar))
+    found))
+
 (ert-deftest test-shape-artist-keys-menu-bar-entry-offers-only-real-commands ()
   "The Artist menu exists, covers the main features, and every item is a command."
-  (let ((menu (lookup-key shape-artist-core-mode-map [menu-bar artist])))
+  (let ((menu (test-shape-artist-keys--find-menu "Artist")))
     (should (keymapp menu))
     (let ((commands (test-shape-artist-keys--menu-commands menu)))
       (should (> (length commands) 8))
