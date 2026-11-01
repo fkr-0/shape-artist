@@ -358,4 +358,96 @@
       (with-current-buffer buf
         (should (eq major-mode 'special-mode))))))
 
+;;; --- Shape Summary Tests ---
+
+(ert-deftest test-shape-artist-ui-shape-summary-rectangle-shows-id ()
+  "Rectangle summaries carry the stable metadata ID, position, and size."
+  (test-artist-with-ui-buffer
+      "+--+\n|  |\n+--+"
+    (shape-artist-shapes-parse)
+    (let* ((rect (cl-find-if #'shape-artist-diagram-rectangle-p
+                             shape-artist--last-shapes-list))
+           (id (shape-artist-metadata-shape-id rect)))
+      (should (stringp id))
+      (should (equal (shape-artist--ui-shape-summary rect)
+                     (format "rect#%s (0,0) 3x2" id))))))
+
+(ert-deftest test-shape-artist-ui-shape-summary-unidentified-shape-uses-placeholder ()
+  "A shape without an assigned ID is summarized with a `?' placeholder."
+  (let ((rect (make-instance 'shape-artist-diagram-rectangle
+                             :x 1 :y 2 :width 3 :height 4)))
+    (should-not (shape-artist-metadata-shape-id rect))
+    (should (equal (shape-artist--ui-shape-summary rect)
+                   "rect#? (1,2) 3x4"))))
+
+(ert-deftest test-shape-artist-ui-shape-summary-edge ()
+  "Edge summaries include ID, edge type, and both endpoints."
+  (let ((edge (make-instance 'shape-artist-diagram-edge
+                             :x 0 :y 1 :x2 5 :y2 1 :edge-type 'horizontal)))
+    (should (equal (shape-artist--ui-shape-summary edge)
+                   "edge#?[horizontal] (0,1)->(5,1)"))))
+
+(ert-deftest test-shape-artist-ui-shape-summary-label ()
+  "Label summaries include ID, quoted text, and position."
+  (let ((label (make-instance 'shape-artist-diagram-label
+                              :text "db" :x 3 :y 4)))
+    (should (equal (shape-artist--ui-shape-summary label)
+                   "label#? \"db\" (3,4)"))))
+
+(ert-deftest test-shape-artist-ui-shape-summary-root-and-generic-node ()
+  "The virtual root and bare nodes have their own summary forms."
+  (should (equal (shape-artist--ui-shape-summary
+                  (make-instance 'shape-artist-diagram-root))
+                 "root"))
+  (should (equal (shape-artist--ui-shape-summary
+                  (make-instance 'shape-artist-diagram-node
+                                 :x 1 :y 2 :width 3 :height 4))
+                 "node (1,2) 3x4")))
+
+;;; --- Sidebar Update Tests ---
+
+(ert-deftest test-shape-artist-ui-update-sidebar-renders-all-sections ()
+  "Updating the sidebar fills its buffer with every section."
+  (test-artist-with-ui-buffer
+      "+--+\n|  |\n+--+"
+    (let ((sidebar (shape-artist--get-or-create-sidebar-buffer)))
+      (unwind-protect
+          (progn
+            (setq shape-artist--mode 'move)
+            (shape-artist-shapes-parse)
+            (shape-artist--update-sidebar)
+            (with-current-buffer sidebar
+              (let ((text (substring-no-properties (buffer-string))))
+                (dolist (heading '("=== State ===" "=== Layout ===" "=== Guides ==="
+                                   "=== Shape Tree ===" "=== Labels ==="
+                                   "=== Keys ==="))
+                  (should (string-match-p (regexp-quote heading) text)))
+                (should (string-match-p "rect#" text)))))
+        (kill-buffer sidebar)))))
+
+(ert-deftest test-shape-artist-ui-update-sidebar-replaces-stale-content ()
+  "Each update erases the previous sidebar content."
+  (test-artist-with-ui-buffer
+      "+--+\n|  |\n+--+"
+    (let ((sidebar (shape-artist--get-or-create-sidebar-buffer)))
+      (unwind-protect
+          (progn
+            (with-current-buffer sidebar
+              (let ((inhibit-read-only t))
+                (insert "STALE-MARKER")))
+            (shape-artist--update-sidebar)
+            (with-current-buffer sidebar
+              (should-not (string-match-p "STALE-MARKER" (buffer-string)))))
+        (kill-buffer sidebar)))))
+
+(ert-deftest test-shape-artist-ui-update-sidebar-without-sidebar-is-noop ()
+  "With no sidebar buffer name or a killed buffer, updating does nothing."
+  (test-artist-with-ui-buffer
+      "abc"
+    (setq shape-artist--sidebar-buffer-name nil)
+    (should-not (shape-artist--update-sidebar))
+    (setq shape-artist--sidebar-buffer-name "*artist-sidebar:does-not-exist*")
+    (should-not (shape-artist--update-sidebar))
+    (should-not (get-buffer "*artist-sidebar:does-not-exist*"))))
+
 ;;; test-shape-artist-ui.el ends here
