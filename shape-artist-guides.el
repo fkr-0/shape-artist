@@ -225,10 +225,38 @@ position changes before the restored signatures are installed."
   (shape-artist--maybe-update-sidebar))
 
 (defun shape-artist-guides--record-history ()
-  "Record current guide state for guide undo/redo."
+  "Record current guide state for guide undo/redo.
+The snapshot goes on the guide undo stack, which also works in buffers that
+have Emacs undo disabled.  When Emacs undo is enabled it is additionally
+registered in `buffer-undo-list', so one ordinary `undo' reverts guide state
+together with the text edits made by the same command."
   (unless shape-artist-guides--history-inhibit
-    (push (shape-artist-guides--snapshot) shape-artist-guides--undo-stack)
-    (setq shape-artist-guides--redo-stack nil)))
+    (let ((snapshot (shape-artist-guides--snapshot)))
+      (push snapshot shape-artist-guides--undo-stack)
+      (setq shape-artist-guides--redo-stack nil)
+      (when (listp buffer-undo-list)
+        (push (list 'apply #'shape-artist-guides--undo-restore snapshot)
+              buffer-undo-list)))))
+
+(defun shape-artist-guides--undo-restore (state)
+  "Restore guide STATE on behalf of Emacs undo, and record the inverse.
+Called through an `apply' entry in `buffer-undo-list'.  Adopted shapes are not
+moved here: their text edits are undone by the ordinary entries of the same
+undo step.  The guide undo and redo stacks are kept in step so that `G u' does
+not undo the same change a second time."
+  (let ((current (shape-artist-guides--snapshot)))
+    (cond ((equal (car shape-artist-guides--undo-stack) state)
+           (pop shape-artist-guides--undo-stack)
+           (push current shape-artist-guides--redo-stack))
+          ((equal (car shape-artist-guides--redo-stack) state)
+           (pop shape-artist-guides--redo-stack)
+           (push current shape-artist-guides--undo-stack)))
+    (let ((shape-artist-guides--history-inhibit t))
+      (shape-artist-guides--apply-state state nil))
+    ;; Undoing an undo (redo) must bring the state we are leaving back.
+    (when (listp buffer-undo-list)
+      (push (list 'apply #'shape-artist-guides--undo-restore current)
+            buffer-undo-list))))
 
 (defun shape-artist-guides-undo ()
   "Undo the latest guide-state change in the current buffer."

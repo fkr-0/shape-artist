@@ -856,5 +856,91 @@
     (should (string-match-p "Last snap: group-move"
                             (shape-artist-guides-section-text)))))
 
+;;; --- Unified Undo Tests ---
+
+(defun test-shape-artist-guides--standard-undo ()
+  "Run one standard `undo' step as if from a fresh command."
+  (undo-boundary)
+  (let ((last-command nil))
+    (undo)))
+
+(defmacro test-shape-artist-guides--with-undo (content &rest body)
+  "Like `test-artist-with-guides-buffer' but with Emacs undo enabled."
+  (declare (indent 1))
+  `(test-artist-with-guides-buffer ,content
+     (buffer-enable-undo)
+     (setq buffer-undo-list nil)
+     ,@body))
+
+(ert-deftest test-shape-artist-guides-standard-undo-reverts-and-redoes-guide-changes ()
+  "Plain `undo' restores guide state, and undoing the undo brings it back."
+  (test-shape-artist-guides--with-undo "abc"
+    (shape-artist-guides-add 'vertical 2 "main" 'manual)
+    (should (= (length shape-artist-guides--guides) 1))
+    (test-shape-artist-guides--standard-undo)
+    (should-not shape-artist-guides--guides)
+    ;; Undoing the undo (a redo) restores the guide.
+    (test-shape-artist-guides--standard-undo)
+    (should (equal (test-shape-artist-guides--summary) '((vertical 2 "main"))))))
+
+(ert-deftest test-shape-artist-guides-standard-undo-reverts-text-and-guides-together ()
+  "One `undo' puts back both the moved shapes and the guide position."
+  (test-shape-artist-guides--with-undo "+---+\n|   |\n+---+"
+    (let* ((rect (test-shape-artist-guides--first-rect))
+           (guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      (shape-artist-guides--adopt-signatures
+       guide (list (shape-artist-shapes-signature rect)))
+      (undo-boundary)
+      (shape-artist-guide-move (shape-artist-guide-id guide) 3)
+      (should (= (oref (test-shape-artist-guides--first-rect) x) 3))
+      (should (= (shape-artist-guide-position
+                  (shape-artist-guides--guide-at-id (shape-artist-guide-id guide)))
+                 3))
+      (test-shape-artist-guides--standard-undo)
+      (shape-artist-shapes-parse)
+      ;; Shapes moved exactly once (not twice) and the guide is back at 0.
+      (should (= (oref (test-shape-artist-guides--first-rect) x) 0))
+      (should (equal (car (shape-artist--get-lines)) "+---+"))
+      (should (= (shape-artist-guide-position
+                  (shape-artist-guides--guide-at-id (shape-artist-guide-id guide)))
+                 0)))))
+
+(ert-deftest test-shape-artist-guides-standard-undo-reverts-toggles ()
+  "Settings toggles join the same undo history."
+  (test-shape-artist-guides--with-undo "abc"
+    (should shape-artist-guides-snap-enabled)
+    (shape-artist-snap-toggle)
+    (should-not shape-artist-guides-snap-enabled)
+    (test-shape-artist-guides--standard-undo)
+    (should shape-artist-guides-snap-enabled)))
+
+(ert-deftest test-shape-artist-guides-multi-guide-command-undoes-in-one-step ()
+  "A command that creates several guides is reverted by a single undo."
+  (test-shape-artist-guides--with-undo "+---+\n|   |\n+---+"
+    (setq shape-artist--locked-shape (test-shape-artist-guides--first-rect))
+    (undo-boundary)
+    (shape-artist-guide-selection-to-guide)
+    (should (= (length shape-artist-guides--guides) 4))
+    (test-shape-artist-guides--standard-undo)
+    (should-not shape-artist-guides--guides)))
+
+(ert-deftest test-shape-artist-guides-standard-undo-keeps-guide-undo-stack-in-sync ()
+  "After a standard undo, `G u' does not re-undo the same change."
+  (test-shape-artist-guides--with-undo "abc"
+    (shape-artist-guides-add 'vertical 2 nil 'manual)
+    (test-shape-artist-guides--standard-undo)
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guides-undo))
+                   '("No guide change to undo")))))
+
+(ert-deftest test-shape-artist-guides-without-undo-records-nothing-in-undo-list ()
+  "In buffers with undo disabled, guide history stays on its own stack only."
+  (test-artist-with-guides-buffer "abc"
+    (should (eq buffer-undo-list t))
+    (shape-artist-guides-add 'vertical 2 nil 'manual)
+    (should (eq buffer-undo-list t))
+    (shape-artist-guides-undo)
+    (should-not shape-artist-guides--guides)))
+
 (provide 'test-shape-artist-guides)
 ;;; test-shape-artist-guides.el ends here
