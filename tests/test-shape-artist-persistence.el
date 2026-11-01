@@ -1,6 +1,7 @@
 ;;; test-shape-artist-persistence.el --- Persistence root tests -*- lexical-binding: t; -*-
 
 (require 'ert)
+(require 'cl-lib)
 (require 'shape-artist-persistence)
 
 (ert-deftest test-shape-artist-persistence-ignores-ambient-temp-project ()
@@ -57,6 +58,23 @@
              "shape-artist-persistence-root-function"
              (error-message-string
               (should-error (shape-artist-persistence-root) :type 'user-error))))))
+
+(ert-deftest test-shape-artist-persistence-default-root-expands-abbreviated-project-roots ()
+  "A project root that project.el reports as ~/... comes back absolute."
+  (let* ((home (file-name-as-directory (make-temp-file "shape-artist-home" t)))
+         (process-environment (cons (concat "HOME=" home) process-environment))
+         (project-dir (expand-file-name "work/proj/" home))
+         (buffer-file-name (expand-file-name "doc/drawing.txt" project-dir))
+         (default-directory (file-name-directory buffer-file-name)))
+    (unwind-protect
+        (progn
+          (make-directory (file-name-directory buffer-file-name) t)
+          (cl-letf (((symbol-function 'project-current)
+                     (lambda (&rest _) (list 'fake)))
+                    ((symbol-function 'project-root)
+                     (lambda (_project) "~/work/proj/")))
+            (should (equal (shape-artist-persistence-default-root) project-dir))))
+      (delete-directory home t))))
 
 (provide 'test-shape-artist-persistence)
 ;;; test-shape-artist-persistence.el ends here

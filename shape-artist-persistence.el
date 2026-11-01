@@ -65,11 +65,14 @@ temporary directory is still used."
          (candidate
           (and project
                (shape-artist-persistence--project-primary-root project))))
+    ;; `project-root' may return an abbreviated name such as ~/work/..., so
+    ;; always hand back an absolute, expanded directory.
     (file-name-as-directory
-     (if (and candidate
-              (not (shape-artist-persistence--temporary-root-p candidate)))
-         candidate
-       anchor))))
+     (expand-file-name
+      (if (and candidate
+               (not (shape-artist-persistence--temporary-root-p candidate)))
+          candidate
+        anchor)))))
 
 (defun shape-artist-persistence-root ()
   "Return the normalized persistence root for the current buffer."
