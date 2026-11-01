@@ -3,84 +3,92 @@ generated_at: 2026-11-01
 
 release:
   unit: shape-artist
-  candidate_version: 0.2.1
-  semver_status: valid_minor_then_patch_over_untagged_0.1.0_baseline
-  base_tag: null
-  proposed_tag: v0.2.1
+  candidate_version: 0.3.0
+  semver_status: valid_minor_over_0.2.1
+  base_tag: v0.2.1
+  proposed_tag: v0.3.0
   tag_created: false
-  publish_state: not_requested
-  push_state: not_requested
+  publish_state: requested
+  push_state: requested
 
 revision:
   branch: main
-  verified_at_commit: a41f3f2
+  verified_at_commit: fdfd1f5
   working_tree_clean: true
   note: >-
-    Verified at the fix commit that immediately precedes the 0.2.1 release
-    commit. Only the local bridge.yml workflow file is intentionally untracked.
-    No tags exist; 0.1.0 and 0.2.0 were recorded as version bumps/changelog
-    sections but never tagged.
+    Verified at the 0.3.0 release commit. Only the local bridge.yml workflow
+    file is intentionally untracked. Versions 0.1.0 to 0.2.1 are tagged
+    retroactively on the commits that introduced them.
 
 version_sources:
   agreement: true
   sources:
     - path: shape-artist.el
-      value: 0.2.1
+      value: 0.3.0
     - path: doc/shape-artist.org
-      value: 0.2.1
+      value: 0.3.0
     - path: CHANGELOG.md
-      value: 0.2.1
+      value: 0.3.0
 
 verification:
   - name: full_release_gate
     command: >-
-      eldev lint && eldev compile && eldev test &&
+      eldev lint && eldev compile --warnings-as-errors && eldev test &&
       emacs -Q --batch -L . --eval '(require (quote shape-artist))' &&
       eldev package && eldev doctor
     result: passed
     evidence:
-      ert_total: 372
-      ert_passed: 372
+      ert_total: 700
+      ert_passed: 700
       ert_unexpected: 0
-      ert_expected_failures: 2  # known re-enable bugs; see CHANGELOG [Unreleased]
-      line_coverage_percent: 97.4
-      line_coverage_floor_percent: 95
+      ert_without_evil: "699 passed, 1 skipped (the Evil-only test)"
       doctests: 9
       lint: passed
       byte_compile: passed
       source_smoke_load: passed
       package_build: passed
       doctor: passed
-  - name: modal_e2e
-    command: eldev test --file tests/test-shape-artist-e2e.el
+  - name: line_coverage
+    command: scripts/coverage.sh --min 95
     result: passed
     evidence:
-      tests_total: 12
-      tests_passed: 12
-      tests_unexpected: 0
-      covers:
-        - key-driven draw-select-edit
-        - anchored resize
-        - arrow edge manipulation
-        - multi-select group movement
-        - connector sticking
-        - arrow parsing
-        - repeated locked-shape editing
-        - minimum-size clamping
-        - styled-border reparsing
-        - delayed Evil loading
-        - mode visual contract
-  - name: packaged_artifact_smoke
-    command: >-
-      extract dist/shape-artist-0.2.1.tar to a temporary directory and run
-      emacs -Q --batch -L <extracted-package> --eval '(require (quote shape-artist))'
+      line_coverage_percent: 97.8
+      lines_hit: 4842
+      lines_total: 4951
+      floor_percent: 95
+      note: >-
+        undercover (edebug) under-reports commands with a computed interactive
+        spec, so the true figure is slightly higher.
+  - name: property_tests
     result: passed
+    evidence:
+      description: >-
+        Seeded random move, resize, restyle, and undo sequences over generated
+        diagrams in all seven border families; 40 diagrams per property in a
+        normal run, 6 under coverage instrumentation.
+  - name: mutation_checks
+    result: passed
+    evidence:
+      description: >-
+        Every test batch added since 0.2.1 was checked by deliberately breaking
+        the production code and confirming a test failed; weak tests found this
+        way were strengthened and several real bugs were fixed.
+  - name: end_to_end_smoke_from_packaged_artifact
+    result: passed
+    evidence:
+      covers:
+        - in-place edit of a commented diagram, written back with its prefix
+        - Mermaid and DOT export
+        - explain and repair of a mixed-border near-miss box
+      loaded_from: extracted dist/shape-artist-0.3.0.tar
 
 artifact:
-  path: dist/shape-artist-0.2.1.tar
-  size_bytes: 245760
-  sha256: b6617295c2c41c908fcc2b87a685d6482b52486234c3d50391a6e65b8d46b558
+  path: dist/shape-artist-0.3.0.tar
+  size_bytes: 430080
+  sha256: 35045706dcaee5535a8f3bf5d72995b3e8cc207558bab7429ef9fb6d05b86239
+  modules: 20
   smoke_loaded_from_extracted_artifact: true
+  excludes_verified: [tests, scripts, markdown, workflows, license]
 
 ci_contract:
   workflow: .github/workflows/test.yml
@@ -91,31 +99,37 @@ ci_contract:
     - snapshot
   jobs_run_tests: true
   jobs_run_lint: true
+  jobs_run_coverage: true
+  coverage_floor_percent: 95
   note: >-
-    This review verified the workflow definition and local Emacs 30.2 behavior;
-    it did not execute the remote GitHub Actions matrix.
+    Verified locally on Emacs 31.1 only. The remote matrix is the first run on
+    27.1 to 30; any failure there is a release blocker for the compatibility
+    claim.
 
 release_metadata:
   changelog: CHANGELOG.md
   architecture_review: docs/architecture-review.md
+  roadmap: doc/ux-roadmap.org
+  license: GPL-3.0-or-later
   package_url:
-    current: https://github.com/example/shape-artist
-    status: blocker_for_tag_or_publication
-    reason: >-
-      The checkout has no configured Git remote, so the canonical upstream URL
-      cannot be derived safely. Package-lint requires a URL/Homepage header, but
-      the historical example URL must be replaced with the real upstream before
-      tagging or publishing.
+    current: https://github.com/fkr-0/shape-artist
+    status: resolved
+
+known_limitations:
+  - Typing a label inside a box, a connect tool with routing, DRAW tool
+    selection and key presets, a default Org C-c ' binding, and Mermaid/DOT
+    import are deferred (see CHANGELOG).
+  - The parser's own graph does not join a connector stem ending on the middle
+    of a bar; the exporter groups segments itself.
+  - Boxes sharing a border row or column with an earlier box are detected once.
 
 warnings:
   - >-
-    Evil 1.15.0 emits Emacs 30.2 obsolete-advice warnings during the direct E2E
-    run; those warnings originate in the optional third-party Evil dependency,
-    not Shape Artist sources.
+    Evil 1.15.0 emits Emacs 30+ obsolete-advice warnings during the Evil-enabled
+    run; they originate in the optional third-party dependency, not Shape Artist.
 
 release_decision:
   code_and_test_state: ready
   package_artifact_state: ready
-  metadata_state: blocked
-  overall: prepared_but_not_taggable
-  remaining_gate: replace placeholder package URL with canonical upstream URL
+  metadata_state: ready
+  overall: ready_pending_remote_ci
