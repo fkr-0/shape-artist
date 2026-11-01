@@ -35,5 +35,20 @@
                          (file-name-as-directory project-dir))))
       (delete-directory ambient t))))
 
+(ert-deftest test-shape-artist-persistence-root-is-normalized-directory ()
+  "The configured root function's result becomes an absolute directory name."
+  (let ((shape-artist-persistence-root-function (lambda () "/tmp/shape-artist-root")))
+    (should (equal (shape-artist-persistence-root) "/tmp/shape-artist-root/")))
+  (let ((default-directory "/tmp/")
+        (shape-artist-persistence-root-function (lambda () "nested/dir/")))
+    (should (equal (shape-artist-persistence-root) "/tmp/nested/dir/"))))
+
+(ert-deftest test-shape-artist-persistence-root-rejects-invalid-results ()
+  "A root function returning nil, an empty string, or a non-string is an error."
+  (dolist (bad '(nil "" 42 (a list)))
+    (ert-info ((format "root function returned %S" bad))
+      (let ((shape-artist-persistence-root-function (lambda () bad)))
+        (should-error (shape-artist-persistence-root) :type 'user-error)))))
+
 (provide 'test-shape-artist-persistence)
 ;;; test-shape-artist-persistence.el ends here

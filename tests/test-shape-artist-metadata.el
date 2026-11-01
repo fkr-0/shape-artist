@@ -115,5 +115,80 @@
     (let ((buffer-file-name nil))
       (should-error (shape-artist-metadata-save) :type 'user-error))))
 
+;;; --- Signature and Snapshot Tests ---
+
+(defun test-shape-artist-metadata--shape-of (kind)
+  "Return the first parsed shape of KIND (a predicate symbol) in the current buffer."
+  (cl-find-if kind (cdr (shape-artist-diagram-parse-buffer))))
+
+(ert-deftest test-shape-artist-metadata-signatures-describe-each-shape-kind ()
+  "Every shape kind has a signature naming its kind and key geometry."
+  (test-artist-with-buffer "+---+\n| a |\n+---+\n\n---"
+    (let ((rect (test-shape-artist-metadata--shape-of #'shape-artist-diagram-rectangle-p))
+          (edge (test-shape-artist-metadata--shape-of #'shape-artist-diagram-edge-p))
+          (label (test-shape-artist-metadata--shape-of #'shape-artist-diagram-label-p)))
+      (let ((sig (shape-artist-metadata-shape-signature rect)))
+        (should (eq (plist-get sig :kind) 'rectangle))
+        (should (equal (list (plist-get sig :x) (plist-get sig :y)
+                             (plist-get sig :width) (plist-get sig :height))
+                       '(0 0 4 2))))
+      (let ((sig (shape-artist-metadata-shape-signature edge)))
+        (should (eq (plist-get sig :kind) 'edge))
+        (should (equal (list (plist-get sig :x) (plist-get sig :y)
+                             (plist-get sig :x2) (plist-get sig :y2))
+                       '(0 4 2 4))))
+      (let ((sig (shape-artist-metadata-shape-signature label)))
+        (should (eq (plist-get sig :kind) 'label))
+        (should (equal (string-trim (plist-get sig :text)) "a"))))
+    (should (equal (shape-artist-metadata-shape-signature
+                    (make-instance 'shape-artist-diagram-root))
+                   '(:kind root)))
+    (let ((sig (shape-artist-metadata-shape-signature
+                (make-instance 'shape-artist-diagram-node
+                               :x 1 :y 2 :width 3 :height 4))))
+      (should (equal (list (plist-get sig :x) (plist-get sig :y)
+                           (plist-get sig :width) (plist-get sig :height))
+                     '(1 2 3 4))))))
+
+(ert-deftest test-shape-artist-metadata-signature-ignores-id-but-tracks-geometry ()
+  "Signatures exclude the ID, and change when geometry changes."
+  (let ((a (make-instance 'shape-artist-diagram-rectangle
+                          :x 0 :y 0 :width 3 :height 2 :id "one"))
+        (b (make-instance 'shape-artist-diagram-rectangle
+                          :x 0 :y 0 :width 3 :height 2 :id "two"))
+        (c (make-instance 'shape-artist-diagram-rectangle
+                          :x 1 :y 0 :width 3 :height 2)))
+    (should (equal (shape-artist-metadata-shape-signature a)
+                   (shape-artist-metadata-shape-signature b)))
+    (should-not (equal (shape-artist-metadata-shape-signature a)
+                       (shape-artist-metadata-shape-signature c)))))
+
+(ert-deftest test-shape-artist-metadata-snapshot-reports-id-kind-and-bounds ()
+  "Snapshots expose ID, kind, signature, and normalized bounds for serialization."
+  (test-artist-with-buffer "+---+\n|   |\n+---+\n\n---"
+    (shape-artist-diagram-parse-buffer)
+    (let* ((snapshots (shape-artist-metadata-snapshot))
+           (rect (cl-find 'rectangle snapshots :key (lambda (s) (alist-get 'kind s))))
+           (edge (cl-find 'edge snapshots :key (lambda (s) (alist-get 'kind s)))))
+      (should (stringp (alist-get 'id rect)))
+      (should (equal (alist-get 'bounds rect) '(0 0 4 2)))
+      (should (equal (alist-get 'bounds edge) '(0 4 2 4)))
+      (should (eq (plist-get (alist-get 'signature rect) :kind) 'rectangle)))
+    ;; An explicit list of shapes is honored instead of the current parse.
+    (should (equal (shape-artist-metadata-snapshot
+                    (list (make-instance 'shape-artist-diagram-rectangle
+                                         :x 2 :y 3 :width 4 :height 5)))
+                   `(((id . nil) (kind . rectangle)
+                      (signature . ,(shape-artist-metadata-shape-signature
+                                     (make-instance 'shape-artist-diagram-rectangle
+                                                    :x 2 :y 3 :width 4 :height 5)))
+                      (bounds . (2 3 6 8))))))))
+
+(ert-deftest test-shape-artist-metadata-edge-bounds-are-normalized ()
+  "Edge snapshot bounds are ordered min-to-max regardless of direction."
+  (let ((edge (make-instance 'shape-artist-diagram-edge :x 5 :y 4 :x2 1 :y2 2)))
+    (should (equal (alist-get 'bounds (shape-artist-metadata-shape-snapshot edge))
+                   '(1 2 5 4)))))
+
 (provide 'test-shape-artist-metadata)
 ;;; test-shape-artist-metadata.el ends here
