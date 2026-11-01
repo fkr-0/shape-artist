@@ -8,7 +8,7 @@
 :COPYING: t
 :END:
 
-This manual is for Shape Artist version 0.1.0.
+This manual is for Shape Artist version 0.2.0.
 
 Copyright \copy 2024-2026 Shape Artist Contributors
 
