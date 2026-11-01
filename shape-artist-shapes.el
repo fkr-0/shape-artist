@@ -88,12 +88,15 @@
 (defun shape-artist-shapes-border-style (shape)
   "Return SHAPE border style."
   (when (and shape (shape-artist-diagram-rectangle-p shape))
-    (save-excursion
-      (shape-artist--goto-row-col (oref shape y) (1+ (oref shape x)))
-      (pcase (char-after)
-        (?= 'heavy)
-        (?. 'light)
-        (_ 'standard)))))
+    (or (ignore-errors (oref shape detected-style))
+        (save-excursion
+          (shape-artist--goto-row-col (oref shape y) (1+ (oref shape x)))
+          (pcase (char-after)
+            (?= 'heavy)
+            (?. 'light)
+            (?─ 'unicode-single)
+            (?═ 'unicode-double)
+            (_ 'standard))))))
 
 (defun shape-artist-shapes-edge-style (edge)
   "Return EDGE connector style."
@@ -142,26 +145,54 @@
       (delete-char (1+ w))
       (insert (shape-artist--space-string (1+ w))))))
 
-(defun shape-artist--draw-rect-border (x y w h &optional h-char)
-  "Draw rectangle border at X Y W H with optional H-CHAR."
-  (let ((hc (or h-char ?-)))
+(defun shape-artist--rectangle-style-chars (style)
+  "Return border character plist for STYLE or legacy horizontal char."
+  (if (characterp style)
+      (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h style :v ?|)
+    (pcase style
+      ('rounded
+       (list :tl ?/ :tr ?\\ :bl ?\\ :br ?/ :h ?- :v ?|))
+      ('unicode-single
+       (list :tl ?┌ :tr ?┐ :bl ?└ :br ?┘ :h ?─ :v ?│))
+      ('unicode-rounded
+       (list :tl ?╭ :tr ?╮ :bl ?╰ :br ?╯ :h ?─ :v ?│))
+      ('unicode-double
+       (list :tl ?╔ :tr ?╗ :bl ?╚ :br ?╝ :h ?═ :v ?║))
+      ('heavy
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?= :v ?|))
+      ('light
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?. :v ?|))
+      (_
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?- :v ?|)))))
+
+(defun shape-artist--draw-rect-border (x y w h &optional style)
+  "Draw rectangle border at X Y W H using STYLE.
+
+STYLE may be a semantic style symbol or a legacy horizontal character."
+  (let* ((chars (shape-artist--rectangle-style-chars (or style 'standard)))
+         (tl (plist-get chars :tl))
+         (tr (plist-get chars :tr))
+         (bl (plist-get chars :bl))
+         (br (plist-get chars :br))
+         (hc (plist-get chars :h))
+         (vc (plist-get chars :v)))
     (save-excursion
       (shape-artist--goto-row-col y (+ x w))
       (shape-artist--goto-row-col y x)
       (delete-char (1+ w))
-      (insert ?+ (make-string (1- w) hc) ?+)
+      (insert tl (make-string (1- w) hc) tr)
       (dotimes (dr (1- h))
         (shape-artist--goto-row-col (+ y 1 dr) (+ x w))
         (shape-artist--goto-row-col (+ y 1 dr) x)
         (delete-char 1)
-        (insert ?|)
+        (insert vc)
         (shape-artist--goto-row-col (+ y 1 dr) (+ x w))
         (delete-char 1)
-        (insert ?|))
+        (insert vc))
       (shape-artist--goto-row-col (+ y h) (+ x w))
       (shape-artist--goto-row-col (+ y h) x)
       (delete-char (1+ w))
-      (insert ?+ (make-string (1- w) hc) ?+))))
+      (insert bl (make-string (1- w) hc) br))))
 
 (defun shape-artist--write-rect-interior (x y w h lines)
   "Write LINES into rect interior at X Y W H."
@@ -233,10 +264,11 @@
       (shape-artist--set-cell (+ (min y y2) i) x 32)))))
 
 (defun shape-artist--style-char (style)
-  "Return horizontal char for border STYLE."
+  "Return legacy horizontal char or semantic STYLE for border redraw."
   (pcase style
     ('heavy ?=)
     ('light ?.)
+    ((or 'rounded 'unicode-single 'unicode-rounded 'unicode-double) style)
     (_ ?-)))
 
 (defun shape-artist--redraw-other-rectangles (primary)

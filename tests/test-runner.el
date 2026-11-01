@@ -37,6 +37,12 @@
 (load (expand-file-name "test-shape-artist-guides.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-metadata.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-persistence.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-diagram-outline.el"
                         (file-name-directory
                          (or load-file-name default-directory))))

@@ -312,6 +312,27 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
         (should (= (oref shape x) orig-x))
         (should (= (oref shape y) orig-y))))))
 
+(ert-deftest test-shape-artist-shapes-move-preserves-unicode-border-family ()
+  "Moving a Unicode rectangle keeps its detected border family intact."
+  (test-artist-with-buffer
+      "        \n╔═══╗   \n║ x ║   \n╚═══╝   \n        "
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (let ((shape (cl-find-if #'shape-artist-diagram-rectangle-p
+                               shape-artist--last-shapes-list)))
+        (should (eq (shape-artist-shapes-border-style shape) 'unicode-double))
+        (shape-artist-shapes-move shape 1 0)
+        (shape-artist-shapes-parse)
+        (let ((moved (cl-find-if #'shape-artist-diagram-rectangle-p
+                                 shape-artist--last-shapes-list)))
+          (should moved)
+          (should (eq (shape-artist-shapes-border-style moved) 'unicode-double))
+          (save-excursion
+            (goto-char (point-min))
+            (forward-line 1)
+            (move-to-column 1)
+            (should (eq (char-after) ?╔))))))))
+
 ;;; --- shapes-resize Tests ---
 
 (ert-deftest test-shape-artist-shapes-resize ()

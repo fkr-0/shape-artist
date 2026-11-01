@@ -19,6 +19,7 @@
 (require 'eieio)
 (require 'shape-artist-core)
 (require 'shape-artist-diagram-parse)
+(require 'shape-artist-persistence)
 
 (defgroup shape-artist-guides nil
   "Guide and grid snapping support for Shape Artist."
@@ -255,9 +256,7 @@ position changes before the restored signatures are installed."
 
 (defun shape-artist-guides--project-root ()
   "Return the current project root for guide persistence."
-  (file-name-as-directory
-   (or (locate-dominating-file default-directory ".git")
-       default-directory)))
+  (shape-artist-persistence-root))
 
 (defun shape-artist-guides--buffer-key ()
   "Return stable persistence key for the current buffer."
@@ -892,7 +891,9 @@ When LABEL is non-nil, store it as the guide display label."
                  (or (shape-artist-guide-label guide) "cleared"))))))
 
 (defun shape-artist-guide-set-snap-distance (&optional id snap-distance-value)
-  "Set guide ID snap SNAP-DISTANCE-VALUE.  Nil SNAP-DISTANCE-VALUE clears the per-guide override."
+  "Set guide ID snap SNAP-DISTANCE-VALUE.
+
+Nil SNAP-DISTANCE-VALUE clears the per-guide override."
   (interactive)
   (let ((guide (shape-artist-guides--select-guide id "Guide snap distance for: ")))
     (if (not guide)

@@ -312,4 +312,71 @@
       (should (eq (nth 0 flat) child))
       (should (eq (nth 1 flat) grandchild)))))
 
+(ert-deftest test-shape-artist-diagram-detect-elbow-as-connected-segments ()
+  "An ASCII `+' bend participates in both axes and forms one route component."
+  (test-artist-with-buffer
+      "---+\n   |\n   |"
+    (let* ((grid (shape-artist-diagram--extract-grid (current-buffer)))
+           (edges (shape-artist-diagram--detect-edges grid nil))
+           (components (shape-artist-diagram--edge-components edges)))
+      (should (= (length edges) 2))
+      (should (= (length components) 1))
+      (should (= (length (car components)) 2)))))
+
+(ert-deftest test-shape-artist-diagram-graph-connects-elbow-routed-boxes ()
+  "Graph analysis joins boxes across a multi-segment orthogonal connector."
+  (test-artist-with-buffer
+      "+--+          \n|  |----+     \n+--+    |     \n        |     \n        | +--+\n        +-|  |\n          +--+"
+    (shape-artist-diagram-parse-buffer)
+    (let* ((graph shape-artist--last-graph)
+           (nodes (shape-artist-diagram-graph-nodes graph))
+           (connectors (shape-artist-diagram-graph-connectors graph))
+           (from (shape-artist-metadata-shape-id (nth 0 nodes)))
+           (to (shape-artist-metadata-shape-id (nth 1 nodes))))
+      (should (= (length nodes) 2))
+      (should (= (length connectors) 1))
+      (should (= (length (shape-artist-diagram-connector-segments
+                          (car connectors)))
+                 3))
+      (should (member to (shape-artist-diagram-graph-neighbors graph from)))
+      (should (equal (shape-artist-diagram-graph-shortest-path graph from to)
+                     (list from to)))
+      (should (= (length (shape-artist-diagram-graph-components graph)) 1)))))
+
+(ert-deftest test-shape-artist-diagram-graph-keeps-isolated-box-components ()
+  "Disconnected rectangles remain explicit graph components."
+  (test-artist-with-buffer
+      "+--+  +--+\n|  |  |  |\n+--+  +--+"
+    (shape-artist-diagram-parse-buffer)
+    (should (= (length (shape-artist-diagram-graph-nodes
+                        shape-artist--last-graph))
+               2))
+    (should (= (length (shape-artist-diagram-graph-components
+                        shape-artist--last-graph))
+               2))))
+
+(ert-deftest test-shape-artist-diagram-detects-coherent-unicode-box-families ()
+  "Single, rounded, and double Unicode boxes are first-class rectangles."
+  (dolist (case '(("┌───┐\n│ x │\n└───┘" unicode-single rectangle)
+                  ("╭───╮\n│ x │\n╰───╯" unicode-rounded rounded-rectangle)
+                  ("╔═══╗\n║ x ║\n╚═══╝" unicode-double rectangle)))
+    (test-artist-with-buffer
+        (nth 0 case)
+      (shape-artist-diagram-parse-buffer)
+      (let ((rect (cl-find-if #'shape-artist-diagram-rectangle-p
+                              shape-artist--last-shapes-list)))
+        (should rect)
+        (should (eq (oref rect detected-style) (nth 1 case)))
+        (should (eq (oref rect kind) (nth 2 case)))))))
+
+(ert-deftest test-shape-artist-diagram-rejects-mixed-border-families ()
+  "Mixed horizontal families are not guessed into a rectangle."
+  (dolist (diagram '("+---+\n|   |\n+===+"
+                     "╔═══╗\n║   ║\n╚───╝"))
+    (test-artist-with-buffer
+        diagram
+      (shape-artist-diagram-parse-buffer)
+      (should-not (cl-find-if #'shape-artist-diagram-rectangle-p
+                              shape-artist--last-shapes-list)))))
+
 ;;; test-shape-artist-diagram-parse.el ends here

@@ -11,16 +11,22 @@
 
 (require 'eieio)
 (require 'cl-lib)
+(require 'shape-artist-metadata)
 
 ;; Forward declarations for buffer-local variables defined in shape-artist-core.el.
 ;; These are set by `shape-artist-diagram-parse-buffer' after parsing.
 (defvar shape-artist--last-root)
 (defvar shape-artist--last-shapes-list)
+(defvar-local shape-artist--last-graph nil
+  "Last graph analysis derived from the parsed diagram.")
 
 ;;; --- EIEIO Class Hierarchy ---
 
 (defclass shape-artist-diagram-node ()
-  ((x :initarg :x :initform 0 :type integer
+  ((id :initarg :id :initform nil
+       :accessor shape-artist-diagram-node-id
+       :documentation "Stable best-effort node identifier assigned after parsing.")
+   (x :initarg :x :initform 0 :type integer
       :documentation "X coordinate (column) of bounding box.")
    (y :initarg :y :initform 0 :type integer
       :documentation "Y coordinate (row) of bounding box.")
@@ -36,7 +42,10 @@
 (defclass shape-artist-diagram-rectangle (shape-artist-diagram-node)
   ((kind :initarg :kind :initform 'rectangle :type symbol
          :reader shape-artist-diagram-node-kind
-         :documentation "Rectangle kind: `rectangle' or `rounded-rectangle'."))
+         :documentation "Rectangle kind: `rectangle' or `rounded-rectangle'.")
+   (detected-style :initarg :detected-style :initform nil
+                   :reader shape-artist-diagram-node-detected-style
+                   :documentation "Coherent border family detected by the parser, or nil."))
   :documentation "A rectangle-like box shape in the diagram.")
 
 (defclass shape-artist-diagram-edge (shape-artist-diagram-node)
@@ -69,6 +78,16 @@
   ((kind :initform 'root :reader shape-artist-diagram-node-kind))
   :documentation "Virtual root of the shape tree.")
 
+(cl-defstruct (shape-artist-diagram-connector
+               (:constructor shape-artist-diagram--make-connector))
+  "One connected orthogonal connector route assembled from edge segments."
+  id segments attachments shape-ids)
+
+(cl-defstruct (shape-artist-diagram-graph
+               (:constructor shape-artist-diagram--make-graph))
+  "Graph view derived from rectangles and connector routes."
+  nodes connectors adjacency)
+
 ;;; --- Grid Extraction ---
 
 (defun shape-artist-diagram--extract-grid (buffer)
@@ -94,17 +113,36 @@
 
 ;;; --- Rectangle Detection ---
 
+(defconst shape-artist-diagram--box-style-specs
+  '((:name standard :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?- :v ?| :kind rectangle)
+    (:name heavy :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?= :v ?| :kind rectangle)
+    (:name light :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?. :v ?| :kind rectangle)
+    (:name rounded :tl ?/ :tr ?\\ :bl ?\\ :br ?/ :h ?- :v ?| :kind rounded-rectangle)
+    (:name unicode-single :tl ?┌ :tr ?┐ :bl ?└ :br ?┘ :h ?─ :v ?│ :kind rectangle)
+    (:name unicode-rounded :tl ?╭ :tr ?╮ :bl ?╰ :br ?╯ :h ?─ :v ?│ :kind rounded-rectangle)
+    (:name unicode-double :tl ?╔ :tr ?╗ :bl ?╚ :br ?╝ :h ?═ :v ?║ :kind rectangle))
+  "Coherent box border families recognized by Shape Artist.")
+
+(defun shape-artist-diagram--box-style-at (grid r c)
+  "Return coherent box style plist beginning at GRID R,C, or nil."
+  (let ((corner (shape-artist-diagram--grid-char grid r c))
+        (next (shape-artist-diagram--grid-char grid r (1+ c))))
+    (cl-find-if (lambda (spec)
+                  (and (eq corner (plist-get spec :tl))
+                       (eq next (plist-get spec :h))))
+                shape-artist-diagram--box-style-specs)))
+
 (defun shape-artist-diagram--horizontal-border-char-p (char)
   "Return non-nil when CHAR is a supported rectangle horizontal border."
-  (memq char '(?- ?= ?.)))
+  (memq char '(?- ?= ?. ?─ ?═)))
 
 (defun shape-artist-diagram--box-start-corner-char-p (char)
   "Return non-nil when CHAR can start a parseable box."
-  (memq char '(?+ ?/)))
+  (memq char '(?+ ?/ ?┌ ?╭ ?╔)))
 
 (defun shape-artist-diagram--box-corner-char-p (char)
   "Return non-nil when CHAR is a supported box corner."
-  (memq char '(?+ ?/ ?\\)))
+  (memq char '(?+ ?/ ?\\ ?┌ ?┐ ?└ ?┘ ?╭ ?╮ ?╰ ?╯ ?╔ ?╗ ?╚ ?╝)))
 
 (defun shape-artist-diagram--horizontal-or-corner-char-p (char)
   "Return non-nil when CHAR is a horizontal border or corner."
@@ -119,6 +157,26 @@
   "Return non-nil when CHAR is part of a vertical edge or arrow."
   (memq char '(?| ?^ ?v)))
 
+(defun shape-artist-diagram--horizontal-connector-cell-p (grid r c)
+  "Return non-nil when GRID R,C participates in a horizontal connector."
+  (let ((char (shape-artist-diagram--grid-char grid r c)))
+    (or (shape-artist-diagram--horizontal-edge-char-p char)
+        (and (eq char ?+)
+             (or (shape-artist-diagram--horizontal-edge-char-p
+                  (shape-artist-diagram--grid-char grid r (1- c)))
+                 (shape-artist-diagram--horizontal-edge-char-p
+                  (shape-artist-diagram--grid-char grid r (1+ c))))))))
+
+(defun shape-artist-diagram--vertical-connector-cell-p (grid r c)
+  "Return non-nil when GRID R,C participates in a vertical connector."
+  (let ((char (shape-artist-diagram--grid-char grid r c)))
+    (or (shape-artist-diagram--vertical-edge-char-p char)
+        (and (eq char ?+)
+             (or (shape-artist-diagram--vertical-edge-char-p
+                  (shape-artist-diagram--grid-char grid (1- r) c))
+                 (shape-artist-diagram--vertical-edge-char-p
+                  (shape-artist-diagram--grid-char grid (1+ r) c)))))))
+
 (defun shape-artist-diagram--detect-rectangles (grid)
   "Detect rectangles in GRID.
 
@@ -130,18 +188,15 @@ Return a list of \\='shape-artist-diagram-rectangle objects."
     ;; Scan for top-left corners: '+' followed by '-'
     (dotimes (r rows)
       (dotimes (c cols)
-        (when (and (not (gethash (cons r c) visited))
-                   (shape-artist-diagram--box-start-corner-char-p
-                    (shape-artist-diagram--grid-char grid r c))
-                   (< (1+ c) cols)
-                   (shape-artist-diagram--horizontal-border-char-p
-                    (shape-artist-diagram--grid-char grid r (1+ c))))
-          ;; Found potential top-left corner, try to trace rectangle
-          (let ((rect (shape-artist-diagram--trace-rectangle grid r c rows cols)))
-            (when rect
-              ;; Mark all perimeter cells as visited
-              (shape-artist-diagram--mark-rect-perimeter visited rect)
-              (push rect rectangles))))))
+        (let ((style (and (not (gethash (cons r c) visited))
+                          (< (1+ c) cols)
+                          (shape-artist-diagram--box-style-at grid r c))))
+          (when style
+            (let ((rect (shape-artist-diagram--trace-rectangle
+                         grid r c rows cols style)))
+              (when rect
+                (shape-artist-diagram--mark-rect-perimeter visited rect)
+                (push rect rectangles)))))))
     (nreverse rectangles)))
 
 (defun shape-artist-diagram--grid-char (grid r c)
@@ -150,59 +205,46 @@ Return a list of \\='shape-artist-diagram-rectangle objects."
              (>= c 0) (< c (length (aref grid 0))))
     (aref (aref grid r) c)))
 
-(defun shape-artist-diagram--trace-rectangle (grid r c rows cols)
+(defun shape-artist-diagram--trace-rectangle (grid r c rows cols &optional style)
   "Trace a rectangle starting from top-left corner at R,C in GRID.
 
 Returns an \\='shape-artist-diagram-rectangle or nil if not a valid rectangle."
-  ;; Find top-right corner
-  (let ((c2 c))
-    (while (and (< (1+ c2) cols)
-                (shape-artist-diagram--horizontal-or-corner-char-p
-                 (shape-artist-diagram--grid-char grid r (1+ c2))))
-      (setq c2 (1+ c2)))
-    ;; Top-right must be a supported corner.
-    (when (shape-artist-diagram--box-corner-char-p
-           (shape-artist-diagram--grid-char grid r c2))
-      ;; Find bottom-left corner
-      (let ((r2 r))
-        (while (and (< (1+ r2) rows)
-                    (memq (shape-artist-diagram--grid-char grid (1+ r2) c)
-                          '(?| ?+ ?\\)))
-          (setq r2 (1+ r2)))
-        ;; Bottom-left must be a supported corner.
-        (when (shape-artist-diagram--box-corner-char-p
-               (shape-artist-diagram--grid-char grid r2 c))
-          ;; Verify bottom-right corner is supported and the corner set is coherent.
-          (when (shape-artist-diagram--box-corner-char-p
-                 (shape-artist-diagram--grid-char grid r2 c2))
-            ;; Verify right side
-            (let ((valid t)
-                  (kind (if (and (eq (shape-artist-diagram--grid-char grid r c) ?/)
-                                 (eq (shape-artist-diagram--grid-char grid r c2) ?\\)
-                                 (eq (shape-artist-diagram--grid-char grid r2 c) ?\\)
-                                 (eq (shape-artist-diagram--grid-char grid r2 c2) ?/))
-                            'rounded-rectangle
-                          'rectangle)))
-              (when (and (eq kind 'rectangle)
-                         (not (and (eq (shape-artist-diagram--grid-char grid r c) ?+)
-                                   (eq (shape-artist-diagram--grid-char grid r c2) ?+)
-                                   (eq (shape-artist-diagram--grid-char grid r2 c) ?+)
-                                   (eq (shape-artist-diagram--grid-char grid r2 c2) ?+))))
-                (setq valid nil))
-              (dotimes (dr (- r2 r 1))
-                (unless (memq (shape-artist-diagram--grid-char grid (+ r 1 dr) c2) '(?| ?+))
-                  (setq valid nil)))
-              ;; Verify bottom side
-              (dotimes (dc (- c2 c 1))
-                (unless (shape-artist-diagram--horizontal-or-corner-char-p
-                         (shape-artist-diagram--grid-char grid r2 (+ c 1 dc)))
-                  (setq valid nil)))
-              (when valid
-                (make-instance 'shape-artist-diagram-rectangle
-                               :x c :y r
-                               :width (- c2 c)
-                               :height (- r2 r)
-                               :kind kind)))))))))
+  (let* ((style (or style (shape-artist-diagram--box-style-at grid r c)))
+         (horizontal (and style (plist-get style :h)))
+         (vertical (and style (plist-get style :v)))
+         (top-right (and style (plist-get style :tr)))
+         (bottom-left (and style (plist-get style :bl)))
+         (bottom-right (and style (plist-get style :br))))
+    (when style
+      (let ((c2 (1+ c)))
+        (while (and (< c2 cols)
+                    (eq (shape-artist-diagram--grid-char grid r c2) horizontal))
+          (setq c2 (1+ c2)))
+        (when (and (< c2 cols)
+                   (eq (shape-artist-diagram--grid-char grid r c2) top-right))
+          (let ((r2 (1+ r)))
+            (while (and (< r2 rows)
+                        (eq (shape-artist-diagram--grid-char grid r2 c) vertical))
+              (setq r2 (1+ r2)))
+            (when (and (< r2 rows)
+                       (eq (shape-artist-diagram--grid-char grid r2 c) bottom-left)
+                       (eq (shape-artist-diagram--grid-char grid r2 c2) bottom-right))
+              (let ((valid t))
+                (dotimes (dr (- r2 r 1))
+                  (unless (eq (shape-artist-diagram--grid-char grid (+ r 1 dr) c2)
+                              vertical)
+                    (setq valid nil)))
+                (dotimes (dc (- c2 c 1))
+                  (unless (eq (shape-artist-diagram--grid-char grid r2 (+ c 1 dc))
+                              horizontal)
+                    (setq valid nil)))
+                (when valid
+                  (make-instance 'shape-artist-diagram-rectangle
+                                 :x c :y r
+                                 :width (- c2 c)
+                                 :height (- r2 r)
+                                 :kind (plist-get style :kind)
+                                 :detected-style (plist-get style :name)))))))))))
 
 (defun shape-artist-diagram--mark-rect-perimeter (visited rect)
   "Mark all perimeter cells of RECT as visited in VISITED hash."
@@ -229,25 +271,25 @@ Return a list of \\='shape-artist-diagram-edge objects."
         (cols (if (> (length grid) 0) (length (aref grid 0)) 0))
         (edges '())
         (visited (make-hash-table :test 'equal))
-        (edge-visited (make-hash-table :test 'equal)))
+        (horizontal-visited (make-hash-table :test 'equal))
+        (vertical-visited (make-hash-table :test 'equal)))
     ;; Mark rectangle perimeters as visited
     (dolist (rect rectangles)
       (shape-artist-diagram--mark-rect-perimeter visited rect))
-    ;; Scan for horizontal edges: sequences of '-' not on rectangle perimeter
+    ;; Horizontal and vertical scans deliberately have independent visited sets.
+    ;; This lets `+' participate in both axes at bends/junctions without turning
+    ;; a connector corner into an undetected gap.
     (dotimes (r rows)
       (let ((c 0))
         (while (< c cols)
           (if (and (not (gethash (cons r c) visited))
-                   (not (gethash (cons r c) edge-visited))
-                   (shape-artist-diagram--horizontal-edge-char-p
-                    (shape-artist-diagram--grid-char grid r c)))
-              ;; Start of potential horizontal edge
+                   (not (gethash (cons r c) horizontal-visited))
+                   (shape-artist-diagram--horizontal-connector-cell-p grid r c))
               (let ((c-start c))
                 (while (and (< c cols)
                             (not (gethash (cons r c) visited))
-                            (shape-artist-diagram--horizontal-edge-char-p
-                     (shape-artist-diagram--grid-char grid r c)))
-                  (puthash (cons r c) t edge-visited)
+                            (shape-artist-diagram--horizontal-connector-cell-p grid r c))
+                  (puthash (cons r c) t horizontal-visited)
                   (setq c (1+ c)))
                 (let ((c-end (1- c)))
                   (when (> c-end c-start)
@@ -260,21 +302,17 @@ Return a list of \\='shape-artist-diagram-edge objects."
                                          :arrow-end (eq (shape-artist-diagram--grid-char grid r c-end) ?>))
                           edges))))
             (setq c (1+ c))))))
-    ;; Scan for vertical edges: sequences of '|' not on rectangle perimeter
     (dotimes (c cols)
       (let ((r 0))
         (while (< r rows)
           (if (and (not (gethash (cons r c) visited))
-                   (not (gethash (cons r c) edge-visited))
-                   (shape-artist-diagram--vertical-edge-char-p
-                    (shape-artist-diagram--grid-char grid r c)))
-              ;; Start of potential vertical edge
+                   (not (gethash (cons r c) vertical-visited))
+                   (shape-artist-diagram--vertical-connector-cell-p grid r c))
               (let ((r-start r))
                 (while (and (< r rows)
                             (not (gethash (cons r c) visited))
-                            (shape-artist-diagram--vertical-edge-char-p
-                     (shape-artist-diagram--grid-char grid r c)))
-                  (puthash (cons r c) t edge-visited)
+                            (shape-artist-diagram--vertical-connector-cell-p grid r c))
+                  (puthash (cons r c) t vertical-visited)
                   (setq r (1+ r)))
                 (let ((r-end (1- r)))
                   (when (> r-end r-start)
@@ -287,20 +325,6 @@ Return a list of \\='shape-artist-diagram-edge objects."
                                          :arrow-end (eq (shape-artist-diagram--grid-char grid r-end c) ?v))
                           edges))))
             (setq r (1+ r))))))
-    ;; Scan for '+' connectors not on rectangle perimeter or already-visited edges
-    (dotimes (r rows)
-      (dotimes (c cols)
-        (when (and (not (gethash (cons r c) visited))
-                   (not (gethash (cons r c) edge-visited))
-                   (eq (shape-artist-diagram--grid-char grid r c) ?+))
-          ;; Check if adjacent to a '-' or '|' edge character
-          (let ((has-horiz (or (and (> c 0) (eq (shape-artist-diagram--grid-char grid r (1- c)) ?-))
-                               (and (< c (1- cols)) (eq (shape-artist-diagram--grid-char grid r (1+ c)) ?-))))
-                (has-vert (or (and (> r 0) (eq (shape-artist-diagram--grid-char grid (1- r) c) ?|))
-                              (and (< r (1- rows)) (eq (shape-artist-diagram--grid-char grid (1+ r) c) ?|)))))
-            ;; Only count as separate edge if not connected to existing edges
-            (unless (or has-horiz has-vert)
-              (puthash (cons r c) t edge-visited))))))
     (nreverse edges)))
 
 ;;; --- Edge Classification ---
@@ -368,6 +392,151 @@ geometry signature, :side is one of `left', `right', `top', or `bottom', and
        (and (>= x (1- rx)) (<= x (+ rx rw 1))
             (>= y (1- ry)) (<= y (+ ry rh 1)))))
    rectangles))
+
+;;; --- Graph Analysis ---
+
+(defun shape-artist-diagram--edge-endpoints (edge)
+  "Return EDGE endpoints as coordinate cons cells."
+  (list (cons (oref edge x) (oref edge y))
+        (cons (oref edge x2) (oref edge y2))))
+
+(defun shape-artist-diagram--edge-components (edges)
+  "Group EDGES into orthogonally connected route components.
+
+Segments belong to the same component when they share an endpoint.  The parser
+represents bends with `+' in both axis scans, so elbow routes naturally become
+one component without changing the public edge objects used by editing code."
+  (let ((by-point (make-hash-table :test 'equal))
+        (seen (make-hash-table :test 'eq))
+        (components nil))
+    (dolist (edge edges)
+      (dolist (point (shape-artist-diagram--edge-endpoints edge))
+        (puthash point (cons edge (gethash point by-point)) by-point)))
+    (dolist (edge edges)
+      (unless (gethash edge seen)
+        (let ((queue (list edge))
+              (component nil))
+          (puthash edge t seen)
+          (while queue
+            (let ((current (pop queue)))
+              (push current component)
+              (dolist (point (shape-artist-diagram--edge-endpoints current))
+                (dolist (neighbor (gethash point by-point))
+                  (unless (gethash neighbor seen)
+                    (puthash neighbor t seen)
+                    (push neighbor queue))))))
+          (push (nreverse component) components))))
+    (nreverse components)))
+
+(defun shape-artist-diagram--rectangle-for-attachment (attachment rectangles)
+  "Return rectangle in RECTANGLES referenced by ATTACHMENT."
+  (let ((signature (plist-get attachment :rect)))
+    (cl-find-if
+     (lambda (rect)
+       (equal signature (shape-artist-diagram--rect-attachment-signature rect)))
+     rectangles)))
+
+(defun shape-artist-diagram--component-attachments (segments)
+  "Return unique endpoint attachment plists used by SEGMENTS."
+  (delete-dups
+   (cl-remove nil
+              (apply #'append
+                     (mapcar
+                      (lambda (edge)
+                        (list (oref edge start-attachment)
+                              (oref edge end-attachment)))
+                      segments)))))
+
+(defun shape-artist-diagram-build-graph (rectangles edges)
+  "Build a graph analysis view from RECTANGLES and classified EDGES.
+
+The graph leaves text editing and individual edge objects untouched.  It groups
+orthogonal segments into connector routes and derives rectangle adjacency from
+their endpoint attachments."
+  (let ((adjacency (make-hash-table :test 'equal))
+        (connectors nil)
+        (connector-index 0))
+    (dolist (rect rectangles)
+      (puthash (shape-artist-metadata-shape-id rect) nil adjacency))
+    (dolist (segments (shape-artist-diagram--edge-components edges))
+      (let* ((attachments (shape-artist-diagram--component-attachments segments))
+             (shape-ids
+              (delete-dups
+               (cl-remove
+                nil
+                (mapcar
+                 (lambda (attachment)
+                   (let ((rect (shape-artist-diagram--rectangle-for-attachment
+                                attachment rectangles)))
+                     (and rect (shape-artist-metadata-shape-id rect))))
+                 attachments)))))
+        (cl-incf connector-index)
+        (push (shape-artist-diagram--make-connector
+               :id (format "connector-%d" connector-index)
+               :segments segments
+               :attachments attachments
+               :shape-ids shape-ids)
+              connectors)
+        (dolist (from shape-ids)
+          (dolist (to shape-ids)
+            (unless (equal from to)
+              (cl-pushnew to (gethash from adjacency) :test #'equal))))))
+    (shape-artist-diagram--make-graph
+     :nodes rectangles
+     :connectors (nreverse connectors)
+     :adjacency adjacency)))
+
+(defun shape-artist-diagram-graph-neighbors (graph shape-or-id)
+  "Return neighbor IDs for SHAPE-OR-ID in GRAPH."
+  (let ((id (if (stringp shape-or-id)
+                shape-or-id
+              (shape-artist-metadata-shape-id shape-or-id))))
+    (copy-sequence (gethash id (shape-artist-diagram-graph-adjacency graph)))))
+
+(defun shape-artist-diagram-graph-components (graph)
+  "Return connected components of GRAPH as lists of stable shape IDs."
+  (let ((seen (make-hash-table :test 'equal))
+        (components nil))
+    (dolist (node (shape-artist-diagram-graph-nodes graph))
+      (let ((start (shape-artist-metadata-shape-id node)))
+        (unless (gethash start seen)
+          (let ((queue (list start))
+                (component nil))
+            (puthash start t seen)
+            (while queue
+              (let ((id (pop queue)))
+                (push id component)
+                (dolist (neighbor (shape-artist-diagram-graph-neighbors graph id))
+                  (unless (gethash neighbor seen)
+                    (puthash neighbor t seen)
+                    (push neighbor queue)))))
+            (push (nreverse component) components)))))
+    (nreverse components)))
+
+(defun shape-artist-diagram-graph-shortest-path (graph from to)
+  "Return a breadth-first shortest ID path in GRAPH from FROM to TO.
+
+FROM and TO may be shape objects or stable shape ID strings."
+  (let* ((start (if (stringp from) from (shape-artist-metadata-shape-id from)))
+         (goal (if (stringp to) to (shape-artist-metadata-shape-id to)))
+         (queue (list start))
+         (seen (make-hash-table :test 'equal))
+         (parent (make-hash-table :test 'equal)))
+    (puthash start t seen)
+    (while (and queue (not (gethash goal seen)))
+      (let ((current (pop queue)))
+        (dolist (neighbor (shape-artist-diagram-graph-neighbors graph current))
+          (unless (gethash neighbor seen)
+            (puthash neighbor t seen)
+            (puthash neighbor current parent)
+            (setq queue (nconc queue (list neighbor)))))))
+    (when (gethash goal seen)
+      (let ((path (list goal))
+            (current goal))
+        (while (not (equal current start))
+          (setq current (gethash current parent))
+          (push current path))
+        path))))
 
 ;;; --- Containment Hierarchy ---
 
@@ -505,10 +674,14 @@ current buffer."
          (root (shape-artist-diagram--build-hierarchy rectangles classified-edges))
          (labels (shape-artist-diagram--extract-labels grid rectangles))
          (shapes-list (append (shape-artist-diagram--flatten-tree root) labels)))
+    (with-current-buffer buf
+      (shape-artist-metadata-reconcile-shapes shapes-list))
     ;; Store in buffer-local variables
     (with-current-buffer buf
       (setq shape-artist--last-root root)
-      (setq shape-artist--last-shapes-list shapes-list))
+      (setq shape-artist--last-shapes-list shapes-list)
+      (setq shape-artist--last-graph
+            (shape-artist-diagram-build-graph rectangles classified-edges)))
     (cons root shapes-list)))
 
 (defun shape-artist-diagram--flatten-tree (node)
