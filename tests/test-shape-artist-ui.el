@@ -463,18 +463,34 @@
            (kill-buffer buf))))))
 
 (ert-deftest test-shape-artist-ui-toggle-shows-then-hides-sidebar ()
-  "Toggling creates and displays the sidebar, then hides its window."
+  "Toggling displays the sidebar when hidden and removes its window when shown.
+Window creation differs between Emacs versions and a batch frame, so the two
+window primitives are simulated on the selected window; this pins the toggle
+logic, not Emacs's window management."
   (test-shape-artist-ui--with-sidebar-cleanup
-    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
-      (shape-artist-shapes-parse)
-      (shape-artist-ui-toggle)
-      (let ((sidebar (get-buffer shape-artist--sidebar-buffer-name)))
-        (should (buffer-live-p sidebar))
-        (should (get-buffer-window sidebar))
-        (should (window-live-p shape-artist--sidebar-window))
-        (shape-artist-ui-toggle)
-        (should-not (get-buffer-window sidebar))
-        (should-not shape-artist--sidebar-window)))))
+    (let ((deleted nil)
+          (original (window-buffer (selected-window))))
+      (save-window-excursion
+        (cl-letf (((symbol-function 'display-buffer-in-side-window)
+                   (lambda (buffer _alist)
+                     (set-window-buffer (selected-window) buffer)
+                     (selected-window)))
+                  ((symbol-function 'delete-window)
+                   (lambda (&optional window)
+                     (push window deleted)
+                     (set-window-buffer (or window (selected-window)) original))))
+          (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+            (shape-artist-shapes-parse)
+            (shape-artist-ui-toggle)
+            (let ((sidebar (get-buffer shape-artist--sidebar-buffer-name)))
+              (should (buffer-live-p sidebar))
+              (should (get-buffer-window sidebar))
+              (should (window-live-p shape-artist--sidebar-window))
+              (should-not deleted)
+              (shape-artist-ui-toggle)
+              (should (= (length deleted) 1))
+              (should-not (get-buffer-window sidebar))
+              (should-not shape-artist--sidebar-window))))))))
 
 (ert-deftest test-shape-artist-ui-show-fills-sidebar-content ()
   "Showing the sidebar immediately renders the current diagram state."
