@@ -386,5 +386,95 @@
           (nth 1 box)
         (should (equal (plist-get (shape-artist-embed-detect) :lines) box))))))
 
+;;; --- Region, Interactive, and Error-Path Tests ---
+
+(ert-deftest test-shape-artist-embed-region-ending-at-a-line-start-excludes-that-line ()
+  "A region whose end sits at the start of a line does not include that line."
+  (test-shape-artist-embed--with-source #'text-mode
+      "intro\n    +--+\n    |  |\n    +--+\noutro\n" "+--+"
+    (let ((beg (point))
+          (end (save-excursion (forward-line 3) (point))))
+      (let ((found (shape-artist-embed-detect beg end)))
+        (should (equal (plist-get found :kind) 'plain))
+        (should (equal (plist-get found :prefix) "    "))
+        (should (equal (plist-get found :lines) test-shape-artist-embed--box))))))
+
+(ert-deftest test-shape-artist-embed-uses-the-active-region-when-there-is-one ()
+  "With no explicit bounds, an active region is what gets edited."
+  (test-shape-artist-embed--with-source #'fundamental-mode
+      ";; prose\n;; +--+\n;; |  |\n;; +--+\n;; more prose\n" "+--+"
+    (let ((transient-mark-mode t)
+          (beg (point)))
+      (push-mark (save-excursion (forward-line 3) (point)) t t)
+      (goto-char beg)
+      (should (use-region-p))
+      (should (equal (plist-get (shape-artist-embed-detect) :lines)
+                     test-shape-artist-embed--box)))))
+
+(ert-deftest test-shape-artist-embed-region-keeps-lines-that-lack-the-comment-token ()
+  "In a selected region, a line without the comment token is kept as it is."
+  (test-shape-artist-embed--with-source #'fundamental-mode
+      ";; +--+\n+--+\n" ";; +--+"
+    (let ((found (shape-artist-embed-detect (point) (point-max))))
+      (should (equal (plist-get found :prefix) ";; "))
+      (should (equal (plist-get found :lines) '("+--+" "+--+"))))))
+
+(ert-deftest test-shape-artist-embed-rejects-an-empty-region ()
+  "A region of only blank lines is a clear error."
+  (test-shape-artist-embed--with-source #'fundamental-mode
+      "text\n\n\nmore\n" "text"
+    (forward-line 1)
+    (should (string-match-p "empty"
+                            (error-message-string
+                             (should-error (shape-artist-embed-detect
+                                            (point) (progn (forward-line 2) (point)))
+                                           :type 'user-error))))))
+
+(ert-deftest test-shape-artist-embed-insert-diagram-prefix-prompts-for-the-canvas-size ()
+  "Interactively with a prefix argument, the canvas size is asked for."
+  (test-shape-artist-embed--with-windowless-sessions
+    (test-shape-artist-embed--with-source #'emacs-lisp-mode ";; Notes\n" "Notes"
+      (let ((current-prefix-arg '(4))
+            (answers (list 3 10)))
+        (cl-letf (((symbol-function 'read-number) (lambda (&rest _) (pop answers))))
+          (call-interactively #'shape-artist-insert-diagram)))
+      (should (equal (shape-artist-embed--session-lines)
+                     (make-list 3 (make-string 10 ?\s)))))))
+
+(ert-deftest test-shape-artist-embed-insert-diagram-under-plain-text-uses-its-indentation ()
+  "Below an indented, non-comment line the new diagram keeps that indentation."
+  (test-shape-artist-embed--with-windowless-sessions
+    (test-shape-artist-embed--with-source #'text-mode "    some text\n" "some text"
+      (shape-artist-insert-diagram 2 6)
+      (should (equal (plist-get shape-artist-embed--session :prefix) "    ")))))
+
+(ert-deftest test-shape-artist-embed-session-commands-need-a-session ()
+  "Committing or aborting outside an editing session explains itself."
+  (with-temp-buffer
+    (dolist (command '(shape-artist-embed-commit shape-artist-embed-abort))
+      (should (string-match-p "not a Shape Artist editing session"
+                              (error-message-string
+                               (should-error (funcall command) :type 'user-error)))))))
+
+(ert-deftest test-shape-artist-embed-commit-explains-when-the-source-is-gone ()
+  "If the source buffer was killed, commit says how to get out."
+  (test-shape-artist-embed--with-windowless-sessions
+    (let ((source (generate-new-buffer "embed-source"))
+          (session nil))
+      (with-current-buffer source
+        (emacs-lisp-mode)
+        (insert ";; +--+\n;; |  |\n;; +--+\n")
+        (goto-char (point-min))
+        (shape-artist-edit-at-point)
+        ;; The (stubbed) window switch made the session current.
+        (setq session (current-buffer)))
+      (progn
+        (kill-buffer source)
+        (with-current-buffer session
+          (let ((text (error-message-string
+                       (should-error (shape-artist-embed-commit) :type 'user-error))))
+            (should (string-match-p "source buffer is gone" text))
+            (should (string-match-p "C-c C-k" text))))))))
+
 (provide 'test-shape-artist-embed)
 ;;; test-shape-artist-embed.el ends here

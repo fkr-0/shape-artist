@@ -387,5 +387,66 @@
                      '((1 0 3) (2 0 3)))))
     (shape-artist-mouse--clear-ghost)))
 
+;;; --- Resize Preview, Resize Errors, and Group Seeding Tests ---
+
+(ert-deftest test-shape-artist-mouse-resize-drag-previews-the-new-size ()
+  "While dragging a corner handle, a ghost shows the box as it would become."
+  (test-shape-artist-mouse--with-diagram test-shape-artist-mouse--canvas
+    (shape-artist-shape-edit-focus (car (test-shape-artist-mouse--rects)))
+    (let ((seen nil)
+          (queue (list (test-shape-artist-mouse--motion 4 6)
+                       (test-shape-artist-mouse--release '(2 . 4) '(4 . 6)))))
+      (cl-letf (((symbol-function 'read-event)
+                 (lambda (&rest _)
+                   (when (= (length queue) 1)
+                     (setq seen (mapcar (lambda (o)
+                                          (save-excursion
+                                            (goto-char (overlay-start o))
+                                            (line-number-at-pos)))
+                                        (cl-remove-if-not
+                                         (lambda (o) (overlay-get o 'face))
+                                         shape-artist-mouse--ghost-overlays))))
+                   (pop queue))))
+        (shape-artist-mouse-drag (test-shape-artist-mouse--down 'down-mouse-1 2 4)))
+      ;; The grown box would span rows 0..4, i.e. buffer lines 1..5.
+      (should (equal (sort seen #'<) '(1 2 3 4 5))))))
+
+(ert-deftest test-shape-artist-mouse-resize-drag-below-minimum-reports-and-keeps-the-box ()
+  "Shrinking past the 2x2 minimum explains itself and leaves the box alone."
+  (test-shape-artist-mouse--with-diagram test-shape-artist-mouse--canvas
+    (shape-artist-shape-edit-focus (car (test-shape-artist-mouse--rects)))
+    (let ((messages nil)
+          (before (buffer-string)))
+      (cl-letf (((symbol-function 'message)
+                 (lambda (fmt &rest args) (push (apply #'format fmt args) messages))))
+        (test-shape-artist-mouse--with-events
+            (list (test-shape-artist-mouse--release '(2 . 4) '(0 . 0)))
+          (shape-artist-mouse-drag (test-shape-artist-mouse--down 'down-mouse-1 2 4))))
+      (should (cl-some (lambda (m) (string-match-p "at least 2x2" m)) messages))
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest test-shape-artist-mouse-shift-click-seeds-the-group-with-the-selected-shape ()
+  "Shift-clicking while one shape is selected makes a group of both."
+  (test-shape-artist-mouse--with-diagram test-shape-artist-mouse--two-boxes
+    (shape-artist-shape-edit-focus (car (test-shape-artist-mouse--rects)))
+    (should-not shape-artist--selected-shape-signatures)
+    (test-shape-artist-mouse--with-events
+        (list (test-shape-artist-mouse--release '(1 . 9) '(1 . 9)))
+      (shape-artist-mouse-toggle-select
+       (test-shape-artist-mouse--down 'S-down-mouse-1 1 9)))
+    (should (= (length shape-artist--selected-shape-signatures) 2))))
+
+(ert-deftest test-shape-artist-mouse-drawing-by-drag-keeps-the-current-mode ()
+  "Drawing a box by dragging leaves DRAW mode as it was."
+  (test-shape-artist-mouse--with-diagram
+      "                    \n                    \n                    "
+    (shape-artist--enter-mode 'draw)
+    (test-shape-artist-mouse--with-events
+        (list (test-shape-artist-mouse--release '(0 . 1) '(2 . 6)))
+      (shape-artist-mouse-drag (test-shape-artist-mouse--down 'down-mouse-1 0 1)))
+    (should (eq shape-artist--mode 'draw))
+    (shape-artist-shapes-parse)
+    (should (= (length (test-shape-artist-mouse--rects)) 1))))
+
 (provide 'test-shape-artist-mouse)
 ;;; test-shape-artist-mouse.el ends here

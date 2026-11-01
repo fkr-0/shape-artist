@@ -236,16 +236,14 @@ on release; releasing where it started is a plain click, which deselects."
               (lambda (cell)
                 (shape-artist-mouse--show-ghost
                  (min (cdr start) (cdr cell)) (min (car start) (car cell))
-                 (abs (- (cdr cell) (cdr start))) (abs (- (car cell) (car start)))))))
-        (mode shape-artist--mode))
+                 (abs (- (cdr cell) (cdr start))) (abs (- (car cell) (car start))))))))
     (if (equal end start)
         (shape-artist-mouse--click-blank start)
+      ;; Committing a shape does not change the mode, so drawing leaves the user
+      ;; in whatever mode they were in.
       (setq shape-artist--anchor start)
       (shape-artist--goto-row-col (car end) (cdr end))
-      (shape-artist--commit-shape)
-      ;; Drawing must not change the mode the user was in.
-      (unless (eq shape-artist--mode mode)
-        (shape-artist--enter-mode mode)))))
+      (shape-artist--commit-shape))))
 
 (defun shape-artist-mouse--click-blank (cell)
   "Handle a plain click on blank canvas at CELL: deselect and move point there."
