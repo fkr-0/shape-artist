@@ -381,9 +381,6 @@ non-nil when the hint was shown."
 (defvar-local shape-artist-tutorial--guide-buffer nil
   "The checklist buffer belonging to this practice buffer.")
 
-(defvar-local shape-artist-tutorial--congratulated nil
-  "Non-nil once the completion message was shown (practice buffer).")
-
 ;;; --- Guide buffer ---
 
 (define-derived-mode shape-artist-tutorial-guide-mode special-mode "SA-Tutorial"
@@ -509,11 +506,11 @@ progress file.  The first time every task is complete, congratulate the user."
       (shape-artist-tutorial--persist-completed shape-artist-tutorial--completed))
     (shape-artist-tutorial--update-guide shape-artist-tutorial--guide-buffer
                                          shape-artist-tutorial--completed)
+    ;; Only a check that completes the last open task gets here with NEWLY, so
+    ;; the congratulation is shown exactly once per completion.
     (when (and newly
-               (not shape-artist-tutorial--congratulated)
                (null (shape-artist-tutorial--current-task
                       shape-artist-tutorial--completed)))
-      (setq shape-artist-tutorial--congratulated t)
       (message "Shape Artist tutorial complete: you know the basics!"))
     newly))
 
@@ -604,8 +601,7 @@ record the undo instead."
           shape-artist-tutorial--commands nil
           shape-artist-tutorial--tracked nil
           shape-artist-tutorial--timer nil
-          shape-artist-tutorial--completed nil
-          shape-artist-tutorial--congratulated nil))
+          shape-artist-tutorial--completed nil))
   (shape-artist--goto-row-col 3 4)
   (add-hook 'post-command-hook #'shape-artist-tutorial--post-command nil t)
   (add-hook 'kill-buffer-hook #'shape-artist-tutorial--cleanup-practice nil t))

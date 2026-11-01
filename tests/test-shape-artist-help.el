@@ -191,6 +191,12 @@
         (should (<= (string-width hint) 40))
         (should (string-prefix-p "MOVE: h/j/k/l move" hint))
         (should (< (string-width hint) (string-width full)))))
+    ;; The limit is inclusive: a line exactly as wide as the limit stays.
+    (let ((shape-artist-help-hint-max-width (string-width full)))
+      (should (equal (shape-artist-help-hint-string 'move) full)))
+    (let ((shape-artist-help-hint-max-width (1- (string-width full))))
+      (should (< (string-width (shape-artist-help-hint-string 'move))
+                 (string-width full))))
     (let ((shape-artist-help-hint-max-width 5))
       (should (equal (shape-artist-help-hint-string 'move)
                      "MOVE: ? again for all")))))
