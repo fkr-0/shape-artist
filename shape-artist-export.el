@@ -88,7 +88,7 @@
   index id rect label lines rounded style)
 
 (defun shape-artist-export--rect-less (a b)
-  "Return non-nil when rectangle A sorts before B by row, then column."
+  "Return non-nil when rectangle A precedes B by row, then column."
   (let ((ya (oref a y)) (yb (oref b y)) (xa (oref a x)) (xb (oref b x)))
     (or (< ya yb)
         (and (= ya yb)
@@ -257,7 +257,7 @@ SIGNATURE-INDEX maps rectangle signatures to node indices."
                                        (symbol-name (nth 2 b)))))))))))
 
 (defun shape-artist-export--segment-less (a b)
-  "Return non-nil when edge segment A sorts before B."
+  "Return non-nil when edge segment A precedes B."
   (let ((ka (list (oref a y) (oref a x) (oref a y2) (oref a x2)))
         (kb (list (oref b y) (oref b x) (oref b y2) (oref b x2))))
     (cl-loop for x in ka for y in kb

@@ -479,7 +479,7 @@ VALID lists the perimeters (as key lists) of exact matches."
     (cons candidates valid)))
 
 (defun shape-artist-explain--clean-corners-p (grid x y width height edits)
-  "Return non-nil when no border line runs on past a corner of the box.
+  "Return non-nil when no border overhangs past a corner of the box.
 
 GRID is the original grid, EDITS the proposed (ROW COL CHAR) edits, and X, Y,
 WIDTH and HEIGHT describe the box.  A corner whose border continues outward is

@@ -48,7 +48,7 @@ for comments.")
   "Match an Org fixed-width line, which is how Org stores literal text.")
 
 (defun shape-artist-embed--leader (line)
-  "Return the comment token (indentation plus leader) that starts LINE, or nil."
+  "Return the comment token (indentation plus leader) opening LINE, or nil."
   (when (or (string-match shape-artist-embed--leader-regexp line)
             (and (derived-mode-p 'org-mode)
                  (string-match shape-artist-embed--org-leader-regexp line)))
@@ -62,7 +62,7 @@ for comments.")
             ((memq (aref rest 0) '(?\s ?\t)) (substring rest 1))))))
 
 (defun shape-artist-embed--diagram-line-p (content)
-  "Return non-nil when CONTENT (a line without its prefix) looks like diagram art.
+  "Return non-nil when CONTENT (a line without its prefix) is diagram art.
 That means box or connector glyphs (`+', `|', box-drawing characters), or a run
 made only of line and arrow characters.  Ordinary prose does not qualify."
   (let ((trimmed (string-trim content)))

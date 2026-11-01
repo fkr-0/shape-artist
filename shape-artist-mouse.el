@@ -253,7 +253,7 @@ on release; releasing where it started is a plain click, which deselects."
 
 ;;;###autoload
 (defun shape-artist-mouse-drag (event)
-  "Handle the mouse press EVENT: select, move, resize, or draw by where it starts.
+  "Handle the mouse press EVENT: select, move, resize, or draw by its target.
 A press on a shape selects it and dragging moves it; a press on a corner handle
 of the selected rectangle resizes it; a press on blank canvas followed by a drag
 draws a box.  A press without movement just selects (or deselects)."

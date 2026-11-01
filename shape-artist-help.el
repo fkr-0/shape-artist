@@ -87,12 +87,12 @@ Group 1 is the direction.")
     (seq-position '("left" "down" "up" "right") (match-string 1 (symbol-name command)))))
 
 (defun shape-artist-help--shifted-p (key)
-  "Return non-nil when the key description KEY contains an upper-case letter."
+  "Return non-nil when the key description KEY has an upper-case letter."
   (let ((case-fold-search nil))
     (string-match-p "[[:upper:]]" key)))
 
 (defun shape-artist-help--key-less-p (a b)
-  "Return non-nil when key/command pair A sorts before pair B.
+  "Return non-nil when key/command pair A precedes pair B.
 
 Movement keys come first: the lower-case ones in h j k l order, then the
 shifted ones.  All remaining keys follow, sorted by key description."
@@ -504,8 +504,8 @@ action."
   "Choose any Shape Artist action from a grouped, annotated palette.
 
 Actions of the current mode run when chosen.  Actions that belong to another
-mode are listed too, marked such as \"(SELECT mode only)\"; choosing one does not
-run it but explains how to get into that mode."
+mode are listed too, marked such as \"(SELECT mode only)\"; choosing one
+does not run it but explains how to get into that mode."
   (interactive)
   (let* ((current (or shape-artist--mode 'move))
          (entries (shape-artist-help--palette-entries current))
