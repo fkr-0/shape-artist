@@ -837,6 +837,15 @@ TITLE is a string or nil.  When nil, skip the box."
 (defvar-local shape-artist--saved-whitespace-style nil
   "Saved whitespace style before entering artist mode.")
 
+(defvar-local shape-artist--enabled nil
+  "Non-nil while `shape-artist--enable' has run and not yet been undone.
+Makes enabling idempotent and disabling safe on never-enabled buffers.")
+
+(defvar-local shape-artist--entered-picture-mode nil
+  "Non-nil when artist mode switched this buffer into `picture-mode'.
+Only then does disabling leave `picture-mode' again, restoring the buffer's
+previous major mode, local map, and mode name.")
+
 ;;;###autoload
 (define-minor-mode shape-artist-core-mode
   "Minor mode for ASCII diagram editing on top of `picture-mode'."
@@ -855,12 +864,23 @@ TITLE is a string or nil.  When nil, skip the box."
     (shape-artist--disable)))
 
 (defun shape-artist--enable ()
-  "Enable artist mode setup."
+  "Enable artist mode setup.
+Calling this while artist mode is already set up is a harmless no-op."
+  (unless shape-artist--enabled
+    (shape-artist--enable-1)))
+
+(defun shape-artist--enable-1 ()
+  "Perform the one-time setup for `shape-artist--enable'."
   (shape-artist--maybe-define-evil-states)
   (when (fboundp 'shape-artist--setup-evil-keymaps)
     (shape-artist--setup-evil-keymaps))
-  ;; Setup picture-mode first (it's a major mode that resets buffer state)
-  (picture-mode)
+  ;; Picture mode supplies the quarter-plane editing model.  Enter it only when
+  ;; the buffer is not already in it, and remember that we did so, so disabling
+  ;; can restore the previous major mode (and never touches a picture mode the
+  ;; user chose themselves).
+  (unless (eq major-mode 'picture-mode)
+    (picture-mode)
+    (setq shape-artist--entered-picture-mode t))
   ;; Save state (after picture-mode has run)
   (setq shape-artist--saved-cursor-type cursor-type)
   (setq shape-artist--saved-mode-line-format mode-line-format)
@@ -886,10 +906,20 @@ TITLE is a string or nil.  When nil, skip the box."
   ;; Add picture-mode exit hook for cleanup (US-13.3)
   (add-hook 'picture-mode-exit-hook #'shape-artist--disable nil t)
   ;; Ensure grid is rectangular
-  (shape-artist--ensure-grid-rectangular))
+  (shape-artist--ensure-grid-rectangular)
+  (setq shape-artist--enabled t))
 
 (defun shape-artist--disable ()
-  "Disable artist mode and clean up."
+  "Disable artist mode and clean up.
+Safe to call when artist mode is not set up, and when it is called as
+`picture-mode-exit-hook' because the user left picture mode directly."
+  (when shape-artist--enabled
+    (shape-artist--disable-1))
+  ;; The hook path reaches here with the minor mode variable still set.
+  (setq shape-artist-core-mode nil))
+
+(defun shape-artist--disable-1 ()
+  "Undo everything `shape-artist--enable-1' set up."
   ;; Remove hooks
   (remove-hook 'post-command-hook #'shape-artist--post-command t)
   (remove-hook 'picture-mode-exit-hook #'shape-artist--disable t)
@@ -913,13 +943,20 @@ TITLE is a string or nil.  When nil, skip the box."
   (setq whitespace-style shape-artist--saved-whitespace-style)
   ;; Reset mode
   (setq shape-artist--mode nil)
+  (setq shape-artist--enabled nil)
+  ;; Leave picture mode only if we entered it.  NOSTRIP keeps trailing
+  ;; whitespace: the diagram text must never change just because we left.
+  (when (and shape-artist--entered-picture-mode
+             (eq major-mode 'picture-mode))
+    (setq shape-artist--entered-picture-mode nil)
+    (picture-mode-exit t))
+  (setq shape-artist--entered-picture-mode nil)
   (force-mode-line-update))
 
 (defun shape-artist-quit ()
-  "Fully exit artist mode to \\=`fundamental-mode\\='."
+  "Exit artist mode and return to the buffer's previous major mode."
   (interactive)
-  (shape-artist-core-mode -1)
-  (fundamental-mode))
+  (shape-artist-core-mode -1))
 
 ;;; --- Provide ---
 

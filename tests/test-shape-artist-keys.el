@@ -210,16 +210,8 @@ the dispatcher intentionally does nothing in that mode.")
           (shape-artist-mode arg)
           (should-not shape-artist-core-mode))))))
 
-;; KNOWN BUGS (both present since 0.1.0): the enable body of
-;; `shape-artist-core-mode' calls `picture-mode', which signals "You are already
-;; editing a picture" when the buffer is already in picture mode.  That happens
-;; (a) when enabling an already-enabled buffer and (b) when enabling again after
-;; disabling, because disabling does not leave picture mode (only
-;; `shape-artist-quit' does).  Both should be no-ops/recoverable.  Remove the
-;; `:expected-result' markers once fixed; ERT then reports an unexpected pass.
 (ert-deftest test-shape-artist-keys-mode-command-reenabling-enabled-buffer-is-idempotent ()
   "Enabling artist mode in a buffer where it is already on keeps it on."
-  :expected-result :failed
   (with-temp-buffer
     (let ((shape-artist--update-sidebar-fn nil))
       (shape-artist-mode 1)
@@ -228,7 +220,6 @@ the dispatcher intentionally does nothing in that mode.")
 
 (ert-deftest test-shape-artist-keys-mode-command-toggle-twice-reenables ()
   "Toggling artist mode on, off, and on again in one buffer works."
-  :expected-result :failed
   (with-temp-buffer
     (let ((shape-artist--update-sidebar-fn nil))
       (shape-artist-mode 'toggle)

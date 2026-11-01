@@ -848,13 +848,17 @@ Each buffer restores the cursor type it had when *it* entered artist mode."
       (should-not shape-artist--sidebar-timer)
       (should-not (memq timer timer-idle-list)))))
 
-(ert-deftest test-artist-core-quit-disables-mode-and-returns-to-fundamental ()
-  "Quitting artist mode switches the buffer to `fundamental-mode'."
-  (test-artist-core-with-plain-buffer "abc"
-    (shape-artist-core-mode 1)
-    (shape-artist-quit)
-    (should-not shape-artist-core-mode)
-    (should (eq major-mode 'fundamental-mode))))
+(ert-deftest test-artist-core-quit-disables-mode-and-restores-previous-mode ()
+  "Quitting artist mode returns the buffer to the major mode it started in."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil))
+      (text-mode)
+      (insert "abc")
+      (shape-artist-core-mode 1)
+      (shape-artist-quit)
+      (should-not shape-artist-core-mode)
+      (should (eq major-mode 'text-mode))
+      (should (equal (buffer-string) "abc")))))
 
 (ert-deftest test-artist-core-enter-mode-rejects-unknown-mode ()
   "Entering a mode with no presentation spec is a user error."
@@ -862,5 +866,84 @@ Each buffer restores the cursor type it had when *it* entered artist mode."
     (setq shape-artist--mode 'move)
     (should-error (shape-artist--enter-mode 'bogus) :type 'user-error)
     (should (eq shape-artist--mode 'move))))
+
+;;; --- Mode Lifecycle Idempotence and Restoration Tests ---
+
+(ert-deftest test-artist-core-enable-is-idempotent ()
+  "Enabling artist mode twice keeps it enabled without stacking presentation."
+  (test-artist-core-with-plain-buffer "abc"
+    (shape-artist-core-mode 1)
+    (let ((header header-line-format)
+          (mode-line mode-line-format))
+      (shape-artist-core-mode 1)
+      (should shape-artist-core-mode)
+      (should (eq shape-artist--mode 'move))
+      (should (equal header-line-format header))
+      (should (equal mode-line-format mode-line))
+      (should (= 1 (cl-count shape-artist--header-line-form header-line-format
+                             :test #'equal))))
+    (shape-artist-core-mode -1)
+    (should-not shape-artist-core-mode)))
+
+(ert-deftest test-artist-core-disable-restores-previous-major-mode ()
+  "Turning artist mode off returns the buffer to the major mode it started in."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil))
+      (text-mode)
+      (let ((original-map (current-local-map))
+            (original-name mode-name))
+        (shape-artist-core-mode 1)
+        (should (eq major-mode 'picture-mode))
+        (shape-artist-core-mode -1)
+        (should (eq major-mode 'text-mode))
+        (should (eq (current-local-map) original-map))
+        (should (equal mode-name original-name))))))
+
+(ert-deftest test-artist-core-disable-keeps-a-picture-mode-the-user-chose ()
+  "If the buffer was already in `picture-mode', disabling leaves it there."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil))
+      (picture-mode)
+      (shape-artist-core-mode 1)
+      (shape-artist-core-mode -1)
+      (should (eq major-mode 'picture-mode)))))
+
+(ert-deftest test-artist-core-disable-never-changes-buffer-text ()
+  "Leaving artist mode must not strip trailing whitespace from the diagram."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil)
+          (text "+--+  \n|  |  \n+--+  "))
+      (insert text)
+      (shape-artist-core-mode 1)
+      (shape-artist-core-mode -1)
+      (should (equal (buffer-string) text)))))
+
+(ert-deftest test-artist-core-picture-mode-exit-disables-cleanly ()
+  "Exiting picture mode behind our back also turns artist mode fully off."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil))
+      (fundamental-mode)
+      (shape-artist-core-mode 1)
+      (picture-mode-exit t)
+      (should-not shape-artist-core-mode)
+      (should-not shape-artist--mode)
+      (should (eq major-mode 'fundamental-mode))
+      ;; and it can be enabled again afterwards
+      (shape-artist-core-mode 1)
+      (should shape-artist-core-mode)
+      (shape-artist-core-mode -1))))
+
+(ert-deftest test-artist-core-toggle-cycle-can-repeat ()
+  "Artist mode can be turned on and off repeatedly in one buffer."
+  (with-temp-buffer
+    (let ((shape-artist--update-sidebar-fn nil))
+      (text-mode)
+      (dotimes (_ 3)
+        (shape-artist-core-mode 1)
+        (should shape-artist-core-mode)
+        (should (eq shape-artist--mode 'move))
+        (shape-artist-core-mode -1)
+        (should-not shape-artist-core-mode)
+        (should (eq major-mode 'text-mode))))))
 
 ;;; test-shape-artist-core.el ends here
