@@ -175,4 +175,233 @@
     (let ((pos (shape-artist--current-row-col)))
       (should (= (cdr pos) 2)))))
 
+;;; --- Command Tests (edit, move, resize, style) ---
+
+(defmacro test-shape-artist-shape-edit--with-lock (content predicate &rest body)
+  "Parse CONTENT, lock the first shape matching PREDICATE, and run BODY."
+  (declare (indent 2))
+  `(test-artist-with-buffer
+       ,content
+     (let ((shape-artist--update-sidebar-fn nil))
+       (shape-artist-shapes-parse)
+       (setq shape-artist--mode 'shape-edit)
+       (setq shape-artist--locked-shape
+             (cl-find-if ,predicate shape-artist--last-shapes-list))
+       (should shape-artist--locked-shape)
+       ,@body)))
+
+(defun test-shape-artist-shape-edit--box (rect)
+  "Return (X Y WIDTH HEIGHT) of RECT."
+  (list (oref rect x) (oref rect y) (oref rect width) (oref rect height)))
+
+(defun test-shape-artist-shape-edit--ends (edge)
+  "Return (X Y X2 Y2) of EDGE."
+  (list (oref edge x) (oref edge y) (oref edge x2) (oref edge y2)))
+
+(defconst test-shape-artist-shape-edit--roomy-box
+  "          \n          \n   +--+   \n   |  |   \n   +--+   \n          "
+  "A 3x2 rectangle at (3,2) with room to move in every direction.")
+
+(ert-deftest test-shape-artist-shape-edit-label-edits-locked-rectangle ()
+  "Editing the label rewrites the locked rectangle's interior."
+  (test-shape-artist-shape-edit--with-lock "+----+\n|    |\n+----+"
+      #'shape-artist-diagram-rectangle-p
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "ab")))
+      (shape-artist-shape-edit-label))
+    (should (string-match-p "|.*ab.*|" (nth 1 (shape-artist--get-lines))))
+    (should (shape-artist-diagram-rectangle-p shape-artist--locked-shape))))
+
+(ert-deftest test-shape-artist-shape-edit-label-without-lock-does-nothing ()
+  "With no locked shape, label editing neither prompts nor changes anything."
+  (test-artist-with-buffer "+----+\n|    |\n+----+"
+    (let ((shape-artist--update-sidebar-fn nil)
+          (shape-artist--locked-shape nil))
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (&rest _) (ert-fail "must not prompt"))))
+        (should-not (shape-artist-shape-edit-label)))
+      (should (equal (shape-artist--get-lines) '("+----+" "|    |" "+----+"))))))
+
+(ert-deftest test-shape-artist-shape-edit-move-prompts-for-offsets ()
+  "Without arguments, moving the locked shape prompts for dx and dy."
+  (test-shape-artist-shape-edit--with-lock test-shape-artist-shape-edit--roomy-box
+      #'shape-artist-diagram-rectangle-p
+    (let ((answers (list 2 1)))
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) (pop answers))))
+        (shape-artist-shape-move)))
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(5 3 3 2)))))
+
+(ert-deftest test-shape-artist-shape-edit-counted-moves-honor-count ()
+  "Counted moves shift by COUNT cells; a missing or non-positive count means one."
+  (dolist (case '((shape-artist-shape-move-left 2 (1 2))
+                  (shape-artist-shape-move-left nil (2 2))
+                  (shape-artist-shape-move-left 0 (2 2))
+                  (shape-artist-shape-move-left -3 (2 2))
+                  (shape-artist-shape-move-up 2 (3 0))
+                  (shape-artist-shape-move-up nil (3 1))
+                  (shape-artist-shape-move-right 2 (5 2))
+                  (shape-artist-shape-move-down 2 (3 4))))
+    (pcase-let ((`(,command ,count (,x ,y)) case))
+      (ert-info ((format "%s %S" command count))
+        (test-shape-artist-shape-edit--with-lock test-shape-artist-shape-edit--roomy-box
+            #'shape-artist-diagram-rectangle-p
+          (funcall command count)
+          (should (equal (list (oref shape-artist--locked-shape x)
+                               (oref shape-artist--locked-shape y))
+                         (list x y))))))))
+
+(ert-deftest test-shape-artist-shape-edit-resize-prompts-for-size ()
+  "Resizing the locked rectangle prompts for width and height when omitted."
+  (test-shape-artist-shape-edit--with-lock test-shape-artist-shape-edit--roomy-box
+      #'shape-artist-diagram-rectangle-p
+    (let ((answers (list 5 3)))
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) (pop answers))))
+        (shape-artist-shape-resize)))
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(3 2 5 3)))))
+
+(ert-deftest test-shape-artist-shape-edit-resize-without-lock-does-nothing ()
+  "With no locked shape, resizing neither prompts nor changes anything."
+  (test-artist-with-buffer "+--+\n|  |\n+--+"
+    (let ((shape-artist--update-sidebar-fn nil)
+          (shape-artist--locked-shape nil))
+      (cl-letf (((symbol-function 'read-number)
+                 (lambda (&rest _) (ert-fail "must not prompt"))))
+        (should-not (shape-artist-shape-resize)))
+      (should (equal (shape-artist--get-lines) '("+--+" "|  |" "+--+"))))))
+
+(ert-deftest test-shape-artist-shape-edit-horizontal-resize-extends-and-shortens-edges ()
+  "Wider/narrower lengthen and shorten horizontal edges, never vertical ones."
+  (test-shape-artist-shape-edit--with-lock "---   " #'shape-artist-diagram-edge-p
+    (shape-artist-shape-resize-wider 2)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(0 0 4 0)))
+    (shape-artist-shape-resize-narrower 3)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(0 0 1 0)))
+    (should (equal (shape-artist--get-lines) '("--    "))))
+  (test-shape-artist-shape-edit--with-lock " |\n |\n |" #'shape-artist-diagram-edge-p
+    (shape-artist-shape-resize-wider 2)
+    (shape-artist-shape-resize-narrower 2)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(1 0 1 2)))))
+
+(ert-deftest test-shape-artist-shape-edit-vertical-resize-extends-and-shortens-edges ()
+  "Taller/shorter lengthen and shorten vertical edges, never horizontal ones."
+  (test-shape-artist-shape-edit--with-lock " |\n |\n  \n  \n  " #'shape-artist-diagram-edge-p
+    (shape-artist-shape-resize-taller 2)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(1 0 1 3)))
+    (shape-artist-shape-resize-shorter 2)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(1 0 1 1))))
+  (test-shape-artist-shape-edit--with-lock "---" #'shape-artist-diagram-edge-p
+    (shape-artist-shape-resize-taller 2)
+    (shape-artist-shape-resize-shorter 2)
+    (should (equal (test-shape-artist-shape-edit--ends shape-artist--locked-shape)
+                   '(0 0 2 0)))))
+
+(ert-deftest test-shape-artist-shape-edit-resize-ignores-labels ()
+  "Resize commands leave non-rectangle, non-edge targets such as labels alone."
+  (test-shape-artist-shape-edit--with-lock "+----+\n| ab |\n+----+"
+      #'shape-artist-diagram-label-p
+    (let ((before (buffer-string)))
+      (dolist (command '(shape-artist-shape-resize-wider shape-artist-shape-resize-narrower
+                         shape-artist-shape-resize-taller shape-artist-shape-resize-shorter
+                         shape-artist-shape-resize-left shape-artist-shape-shrink-left
+                         shape-artist-shape-resize-up shape-artist-shape-shrink-up))
+        (funcall command 1)
+        (should (equal (buffer-string) before))))))
+
+(ert-deftest test-shape-artist-shape-edit-rectangle-shrinks-stop-at-minimum-size ()
+  "Narrower/shorter shrink a rectangle but stop at the 2x2 minimum."
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-resize-narrower 9)
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(0 0 2 3)))
+    (shape-artist-shape-resize-shorter 9)
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(0 0 2 2)))
+    ;; Already minimal: further shrinking is a harmless no-op.
+    (let ((before (buffer-string)))
+      (shape-artist-shape-resize-narrower 1)
+      (shape-artist-shape-resize-shorter 1)
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest test-shape-artist-shape-edit-rectangle-grows-taller-and-wider ()
+  "Taller/wider grow a rectangle from its bottom-right anchor."
+  (test-shape-artist-shape-edit--with-lock test-shape-artist-shape-edit--roomy-box
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-resize-taller 1)
+    (shape-artist-shape-resize-wider 2)
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(3 2 5 3)))))
+
+(ert-deftest test-shape-artist-shape-edit-shrink-from-left-and-top ()
+  "Shrinking from the left or top moves the opposite-anchored edge inward."
+  (test-shape-artist-shape-edit--with-lock "+----+\n|    |\n|    |\n+----+"
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-shrink-left 2)
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(2 0 3 3)))
+    (shape-artist-shape-shrink-up 1)
+    (should (equal (test-shape-artist-shape-edit--box shape-artist--locked-shape)
+                   '(2 1 3 2)))))
+
+(ert-deftest test-shape-artist-shape-edit-set-style-rectangle-and-edge ()
+  "Setting a style restyles rectangles and edges."
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-set-style 'heavy)
+    (should (equal (car (shape-artist--get-lines)) "+===+"))
+    (should (eq (shape-artist-shapes-border-style shape-artist--locked-shape) 'heavy)))
+  (test-shape-artist-shape-edit--with-lock "---" #'shape-artist-diagram-edge-p
+    (shape-artist-shape-set-style 'arrow-end)
+    (should (equal (shape-artist--get-lines) '("-->")))))
+
+(ert-deftest test-shape-artist-shape-edit-set-style-prompts-and-ignores-labels ()
+  "Interactively the style is read via completion; labels are never restyled."
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (cl-letf (((symbol-function 'completing-read) (lambda (&rest _) "light")))
+      (call-interactively #'shape-artist-shape-set-style))
+    (should (equal (car (shape-artist--get-lines)) "+...+")))
+  (test-shape-artist-shape-edit--with-lock "+----+\n| ab |\n+----+"
+      #'shape-artist-diagram-label-p
+    (let ((before (buffer-string)))
+      (shape-artist-shape-set-style 'heavy)
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest test-shape-artist-shape-edit-cycle-style-rectangle-borders ()
+  "Cycling rectangle styles goes standard, heavy, light, then back."
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (let (seen)
+      (dotimes (_ 4)
+        (shape-artist-shape-cycle-style)
+        (push (shape-artist-shapes-border-style shape-artist--locked-shape) seen))
+      (should (equal (nreverse seen) '(heavy light standard heavy))))))
+
+(ert-deftest test-shape-artist-shape-edit-cycle-style-edges-and-replace-alias ()
+  "Cycling edge styles goes plain, arrow-end, arrow-both, then back; replace aliases it."
+  (test-shape-artist-shape-edit--with-lock "---" #'shape-artist-diagram-edge-p
+    (let (seen)
+      (dotimes (_ 4)
+        (shape-artist-shape-cycle-style)
+        (push (shape-artist-shapes-edge-style shape-artist--locked-shape) seen))
+      (should (equal (nreverse seen) '(arrow-end arrow-both plain arrow-end)))))
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-replace)
+    (should (equal (car (shape-artist--get-lines)) "+===+"))))
+
+(ert-deftest test-shape-artist-shape-edit-cycle-style-ignores-labels ()
+  "Cycling styles leaves label targets untouched."
+  (test-shape-artist-shape-edit--with-lock "+----+\n| ab |\n+----+"
+      #'shape-artist-diagram-label-p
+    (let ((before (buffer-string)))
+      (shape-artist-shape-cycle-style)
+      (should (equal (buffer-string) before)))))
+
 ;;; test-shape-artist-shape-edit.el ends here
