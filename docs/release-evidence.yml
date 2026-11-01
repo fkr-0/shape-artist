@@ -13,7 +13,7 @@ release:
 
 revision:
   branch: main
-  verified_at_commit: b1a7963
+  verified_at_commit: a41f3f2
   working_tree_clean: true
   note: >-
     Verified at the fix commit that immediately precedes the 0.2.1 release
@@ -39,9 +39,12 @@ verification:
       eldev package && eldev doctor
     result: passed
     evidence:
-      ert_total: 253
-      ert_passed: 253
+      ert_total: 372
+      ert_passed: 372
       ert_unexpected: 0
+      ert_expected_failures: 2  # known re-enable bugs; see CHANGELOG [Unreleased]
+      line_coverage_percent: 97.4
+      line_coverage_floor_percent: 95
       doctests: 9
       lint: passed
       byte_compile: passed
@@ -76,7 +79,7 @@ verification:
 artifact:
   path: dist/shape-artist-0.2.1.tar
   size_bytes: 245760
-  sha256: 76035e1a0a4c83f40d0f7c3a862b0eba83177597fab327f50fb09af1dde9ca13
+  sha256: b6617295c2c41c908fcc2b87a685d6482b52486234c3d50391a6e65b8d46b558
   smoke_loaded_from_extracted_artifact: true
 
 ci_contract:

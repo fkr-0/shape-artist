@@ -1,0 +1,253 @@
+#+title: Shape Artist UX and Product Roadmap
+#+subtitle: Making ASCII diagrams the easiest thing a developer does all day
+
+Baseline: version 0.2.1, verified 2026-11-01 (372 tests, 97.4% line coverage).
+Companion documents: =docs/feature-roadmap.md= and =future.yml= cover the
+/engine/ (operation protocol, layout, routing, indexing).  This file covers the
+/experience layer/ and says where it depends on the engine.
+
+* Thesis
+
+Developers do not need another drawing application.  They need the diagrams
+that already live in their text — source comments, READMEs, Org and Markdown
+docs, RFCs, commit messages, terminal sessions — to be as easy to create and keep
+correct as the code next to them.
+
+The stronghold is therefore not "a better canvas".  It is:
+
+1. *It comes to the diagram.*  Edit a diagram where it sits, in any buffer, in
+   two keystrokes, without leaving your file or mangling the text around it.
+2. *You can trust it.*  One undo reverses any action.  The text is always the
+   source of truth.  Nothing is silently rewritten.
+3. *You learn it in five minutes.*  Every state shows its keys, every failure says
+   why and offers a fix.
+4. *It looks good by default.*  Consistent styles, aligned boxes, clean
+   connectors, and output that survives review and rendering.
+
+Adoption funnel the roadmap is built around:
+
+| Stage    | Question the user asks        | What must be true                         | Phase |
+|----------+-------------------------------+-------------------------------------------+-------|
+| Discover | "Can it edit /my/ diagram?"   | Works inside comments, Org, Markdown      | B     |
+| First win| "Can I do something in 5 min?"| Tutorial, palette, discoverable keys      | C     |
+| Habit    | "Is it faster than by hand?"  | Preview, mouse, in-place text, alignment  | D, E  |
+| Advocate | "Can I show my team?"         | Export, lint, semantic diff, gallery      | F, G  |
+| (gate)   | "Can I rely on it?"           | Undo, round-trip safety, no dead ends     | A     |
+
+* Where we are today
+
+** Strengths worth protecting
+
+- *Modal clarity.*  MOVE, DRAW, SELECT, and SHAPE-EDIT share one state machine
+  with redundant cues (header badge, cursor form, overlays, sidebar); colour is
+  never the only signal.
+- *A trustworthy parser.*  Seven border families are recognised and mixed ones are
+  rejected rather than guessed; connectors group into routes with a derived graph.
+- *Text is truth.*  Guides, grid, metadata, and IDs live in sidecars and overlays.
+- *Safety net.*  372 tests with mutation-checked assertions and a coverage floor.
+
+** Friction we have verified
+
+Each item cites evidence in the repository, so it can be re-checked.
+
+| ID  | Friction                                                                 | Evidence                                                                  | Cost to the user                                               |
+|-----+--------------------------------------------------------------------------+---------------------------------------------------------------------------+----------------------------------------------------------------|
+| F1  | Enabling the mode takes over the /whole buffer/ (=picture-mode=); no region, narrowing, or comment-aware editing | no =narrow-to-region= / region handling anywhere in the sources | Diagrams inside code comments, Org, and Markdown cannot be edited in place |
+| F2  | Mode cannot be re-enabled: toggling off then on, or enabling twice, signals "already editing a picture" | two expected-failure tests in =tests/test-shape-artist-keys.el= | Looks broken; erodes trust on first contact                    |
+| F3  | Two undo worlds: Emacs text undo and a separate guide undo (=G u=, =G R=) | =shape-artist-guides-undo= vs =undo=                                      | "Undo" does not undo everything; unpredictable                 |
+| F4  | The =u= key means /undo/ in DRAW but /toggle sidebar/ everywhere else      | =shape-artist--dispatch-utility=                                          | Breaks Vim and Emacs muscle memory at the worst moment         |
+| F5  | Discovery is one flat =completing-read= list: 26 global entries plus 3–7 per mode, ungrouped; no tutorial, cheat sheet, or key popup | =shape-artist--ui-quick-actions= | Hard to learn what exists; the first session is guesswork      |
+| F6  | Styles are lopsided: 7 families are /detected/, 3 are /selectable/, DRAW only produces plain ASCII | =shape-artist-diagram--box-style-specs= vs the style prompt; =shape-artist-shapes-replace= rejects the rest | Unicode boxes can be moved but not created or restyled        |
+| F7  | The sidebar is passive (=special-mode=, no keymap); only the outline jumps on =RET= | =shape-artist-ui.el= has no keymap                                | A navigator that cannot navigate                               |
+| F8  | No mouse support, no menus, no context menu                              | no mouse or menu code in any source file                                  | Excludes people who reach for the mouse and hurts discoverability |
+| F9  | Labels, moves, and resizes go through minibuffer prompts (=read-string=, =read-number=) | =shape-artist-shapes-edit-label=, =shape-artist-shape-move=       | Breaks flow; no live feedback                                  |
+| F10 | Near-miss boxes (mixed border family, gap) are rejected /silently/        | =test-shape-artist-diagram-rejects-mixed-border-families=                 | "Why is my box not selectable?" with no answer                 |
+| F11 | Shrinking an attached vertical connector to one cell draws a stray =-=    | observed; listed under Known issues in the changelog                      | Visible corruption in an otherwise correct edit                |
+| F12 | No import, export, or semantic diff                                       | no such code                                                              | Diagrams cannot enter or leave the rest of the toolchain       |
+| F13 | Small configuration surface: 8 =defcustom= variables                      | =grep defcustom=                                                          | Key style, default border, and tools cannot be tuned           |
+
+* Design principles
+
+1. *Text is the source of truth.*  Parse, derive, overlay — never store state the
+   buffer cannot reproduce.  Edits must round-trip.
+2. *One action, one undo.*  Any command, including guide and selection effects,
+   reverses with one standard undo.
+3. *Show before you commit.*  Moves, resizes, and connections preview as ghosts;
+   =RET= commits and =ESC= cancels.
+4. *Progressive disclosure.*  Six verbs first (draw, select, move, resize, label,
+   connect); everything else is one palette away.
+5. *No dead ends.*  The current mode, how to leave it, and the useful keys are
+   always visible.  Every error says why and offers the fix.
+6. *Keyboard-first, mouse-welcome, accessible.*  Same capabilities by key and by
+   pointer; never colour alone; works in a terminal.
+7. *Quiet and dependency-light.*  =completing-read= is the baseline; richer UIs
+   (which-key, Transient, Embark) are optional layers, not requirements.
+8. *Meet the user's setup.*  Evil, vanilla Emacs, and other modal packages; local
+   files, TRAMP, and the terminal.
+
+* The roadmap
+
+Sizes: S = days, M = 1–3 weeks, L = a month or more.  Versions are targets, not
+promises.  Acceptance criteria are written to be testable.
+
+** Phase A — Trust and polish (0.2.2 to 0.3.0)
+
+/Goal: nothing a new user touches looks broken, and everything is reversible./
+Gate for every later phase; in-place editing of someone's source file is only
+acceptable once undo and round-tripping are dependable.
+
+| ID | Deliverable | Acceptance | Size | Fixes |
+|----+-------------+------------+------+-------|
+| A1 | Idempotent enable/disable: enabling twice is a no-op; disabling restores the /previous/ major mode instead of leaving =picture-mode= | the two expected-failure tests pass and their markers are removed; major mode after disable equals the one before enable | S | F2 |
+| A2 | One undo: group every command into one undo step and record guide, selection, and mode effects in the same step (or consistently derive them from the text) | for each command in a table-driven test, a single =undo= restores text and guide state | M | F3 |
+| A3 | Key philosophy: =u= always means undo; the sidebar toggles on another key; publish the key map rationale | no key has two meanings across modes; documented in the manual | S | F4 |
+| A4 | Connector shrink rule: never collapse a connector to a glyph; clamp and explain | the "moving down along a connector" case keeps a valid edge and reports why it stopped | S | F11 |
+| A5 | Error UX pass: every =user-error= names the cause and the remedy | review checklist plus tests asserting message content | S | — |
+| A6 | Round-trip safety suite: property-based tests that parse then redraw is the identity, and that no command alters text outside the target shape | generated diagrams survive 1000 random command sequences without touching neighbours | M | F10, safety |
+| A7 | Complete the style set: all seven families selectable in the style prompt and cycle; a =shape-artist-default-style= option drives DRAW | =shape-artist-shapes-replace= accepts every detected family; DRAW honours the default | M | F6, F13 |
+
+** Phase B — Meet the diagram where it lives (0.3)  /the biggest bet/
+
+/Goal: the answer to "can it edit my diagram?" is always yes./
+
+| ID | Deliverable | Acceptance | Size |
+|----+-------------+------------+------|
+| B1 | =shape-artist-edit-at-point=: find the diagram block around point in any buffer and edit it in an isolated session (narrowed in place, or a temporary buffer in the style of =org-edit-special=), with =C-c C-c= to commit and =C-c C-k= to abort | text outside the block is byte-identical after commit; abort restores the original | L |
+| B2 | Comment awareness: detect and strip the comment prefix (=;;=, =//=, =#=, =*=, =>=, and table-bar prefixes) and indentation on entry, and restore them on exit | round-trip tests in Elisp, Python, C, Markdown, and Org buffers | M |
+| B3 | Org and Markdown integration: =C-c '= on =#+begin_example=, =#+begin_src ascii=, and fenced blocks | works in =org-mode= and =markdown-mode= with the sample documents in the manual | M |
+| B4 | =shape-artist-insert-diagram=: drop a sized canvas at point, inside a comment if point is in one | produces a correctly prefixed, editable block | S |
+| B5 | Stop depending on whole-buffer =picture-mode=: own the editing primitives, or confine =picture-mode= to the isolated session | enabling the mode never changes the major mode of the user's buffer | L |
+
+Depends on A1 and A2.  This phase turns the package from "a place to draw" into
+"the way I edit diagrams everywhere".
+
+** Phase C — Learnable in five minutes (0.4)
+
+/Goal: first labelled box in under 90 seconds, without reading the manual./
+
+| ID | Deliverable | Acceptance | Size | Fixes |
+|----+-------------+------------+------+-------|
+| C1 | =M-x shape-artist-tutorial=: a practice buffer with tasks and live checks (draw, label, connect, move, restyle, undo) | each task detects completion; progress persists across sessions | M | F5 |
+| C2 | Palette v2: grouped, annotated with the live key, searchable by intent ("align", "arrow"), and showing unavailable actions with the reason | =?= opens a mode-aware key hint, =??= the full palette; both generated from the keymaps so they cannot go stale | M | F5 |
+| C3 | Generated cheat sheet buffer from the active keymaps | content matches the keymap in a test that fails if a binding changes without help | S | F5 |
+| C4 | First-run hint on =shape-artist-scratch= (one line: =? keys, tutorial=), dismissible and remembered | shown once per user; never in batch mode | S | F5 |
+| C5 | Tool palette in DRAW: one-key tools (box, line, arrow, text, connector) with the active tool in the header | tool changes are visible and reversible | M | F9 |
+| C6 | Key style presets (=vim=, =emacs=, =evil=) behind one =shape-artist-keymap-style= option; notes for Meow, god-mode, and Boon | each preset passes the same mode-routing test table | M | F13 |
+
+** Phase D — Direct manipulation (0.5)
+
+/Goal: moving, resizing, and connecting feel physical, with feedback before commit./
+
+| ID | Deliverable | Acceptance | Size | Fixes |
+|----+-------------+------------+------+-------|
+| D1 | Ghost previews for move and resize (overlay), =RET= commits and =ESC= cancels | no buffer change until commit; one undo step after | M | F9 |
+| D2 | Visible handles on the edit target (corners and edges) | handles appear in SHAPE-EDIT and match what the keys do | M | — |
+| D3 | Mouse: click to select, shift-click for multi-select, drag to move and resize, double-click to edit the label, a context menu; degrades gracefully in terminals via =xterm-mouse-mode= | the same operations by key and by mouse produce identical text | L | F8 |
+| D4 | Type-in-place labels: edit the text inside the box with live reflow and auto-grow, =TAB= to the next label | no minibuffer for labels; box grows or wraps per setting | M | F9 |
+| D5 | Interactive sidebar and outline: =RET= or click selects and jumps; rename a label, hide a guide, reorder | every row is actionable by key and mouse | M | F7 |
+| D6 | Connect tool: pick source then target, route the connector, and re-route it when boxes move | needs the routing in =docs/feature-roadmap.md=; an edit never leaves a dangling end | L | — |
+
+** Phase E — Craft and polish (0.6)
+
+/Goal: diagrams that look deliberate, with little manual tidying./
+
+| ID | Deliverable | Acceptance | Size |
+|----+-------------+------------+------|
+| E1 | Align and distribute: left, centre, right, top, middle, bottom; equal spacing; equal widths | results are idempotent and previewable; reuses guides | M |
+| E2 | Auto-fit: a box hugs its label; text wraps and aligns inside boxes; padding settings | resizing a label resizes the box and never clips text | M |
+| E3 | Style presets (=ascii=, =unicode-light=, =unicode-heavy=, =rounded=, =double=) per diagram or per project; restyle a whole diagram in one key; arrowhead and line variants; titles in borders | restyling changes glyphs only, never geometry | M |
+| E4 | Stencils and templates: databases, queues, actors, clouds, plus architecture, sequence, state, and flow starters; user stencils saved in the project sidecar | inserting a stencil yields a parseable, selectable group | M |
+| E5 | Width correctness for wide and combining characters (CJK, emoji) — /unverified today; needs an audit first/ | boxes containing wide characters stay rectangular in the buffer and in the parse | M |
+
+** Phase F — Intelligence and interoperability (0.7 and later)
+
+/Goal: the tool understands the diagram, and the diagram can travel./
+
+| ID | Deliverable | Acceptance | Size | Fixes |
+|----+-------------+------------+------+-------|
+| F1 | "Why isn't this a box?": an explain command that highlights near-misses (mixed family, gap, missing corner) with a one-key repair | every rejection case in the parser tests produces an explanation and a repair that parses | M | F10 |
+| F2 | Diagram lint: misalignment, uneven spacing, overlaps, dangling connectors, duplicate labels; a Flymake backend and a batch command for CI | rules are individually toggleable; batch exits non-zero on violations | M | — |
+| F3 | Tidy and auto-layout for a selection (layered layout, Manhattan routing) with preview, accept, and reject | deterministic output; byte-identical on repeat | L | — |
+| F4 | Export and import: Mermaid, PlantUML, DOT, SVG, PNG, Org tables; import simple Mermaid or DOT to ASCII; pasted hand-drawn text normalises | round-trip tests for the supported subset; unsupported constructs reported, not dropped | L | F12 |
+| F5 | Semantic diff: "box API moved, connector added" as a companion to =diff-mode= and Magit, built on stable shape IDs | a text diff of a diagram yields a readable shape-level summary | M | F12 |
+| F6 | Documented public graph API: list boxes, neighbours, and paths for scripts, Org-babel, and generated docs | stable, versioned, and tested | S | F12 |
+
+Depends on the operation protocol (P0) in the engine roadmap for A2, D1, F3.
+
+** Phase G — Ecosystem and reach (continuous)
+
+- *Distribution:* publish on MELPA and NonGNU ELPA with a real package URL; keep
+  Emacs 27.1–snapshot CI green; a short documentation site with a 60-second tour
+  (asciinema or GIF) for each core flow, and a gallery of example diagrams.
+- *Integrations:* Embark actions on the diagram at point; Consult and =imenu=
+  outline; optional which-key, Transient, and Hydra front ends; Evil, Meow,
+  god-mode, and Boon; =project.el= sidecars; TRAMP and terminal safe.
+- *Accessibility:* screen-reader and Emacspeak announcements of the current shape
+  and position; high-contrast and colour-blind-safe faces; never colour alone.
+- *Performance budgets:* incremental parsing for large buffers with benchmarks in
+  CI; keep the debounced sidebar from stalling typing.
+- *Support loop:* a =shape-artist-report-bug= command that assembles version,
+  Emacs, and configuration as plain text, strictly opt-in.
+
+* The five bets, in order
+
+| # | Bet | Why it wins | Effort | Depends on |
+|---+-----+-------------+--------+------------|
+| 1 | *Trust first* (Phase A) | You cannot ask developers to edit their own source with a tool that fails on second use or has two undo systems | S–M | — |
+| 2 | *In-place editing* (Phase B) | It removes the main reason not to try the tool, and no other Emacs option does it well | L | A1, A2 |
+| 3 | *Five-minute onboarding* (Phase C) | Cheap, high leverage, and every later feature benefits from being discoverable | M | A3 |
+| 4 | *Direct manipulation with previews and mouse* (Phase D) | Turns a keyboard curiosity into a tool people prefer to drawing by hand | L | B, op protocol |
+| 5 | *Explain, repair, export* (F1, F4) | "Why isn't this a box?" and "get it into my docs" are what people remember and share | M–L | A6 |
+
+Sequencing logic: A unlocks B, because trust gates touching someone's file; B and C
+together create the first-run story; D makes the habit stick; F and G turn users
+into advocates.
+
+* How we will know it is working
+
+These are targets to validate with real users, not measurements of today:
+
+- *Time to first win:* a new user draws and labels a box in under 90 seconds
+  without documentation; 5 of 5 tutorial tasks completed unaided.
+- *Efficiency:* a labelled box in at most 6 keystrokes; connecting two boxes in at
+  most 4; editing a diagram in a comment starts in at most 2.
+- *Safety:* 0 known data-corruption bugs; every command is one undo step; the
+  round-trip suite stays green on every commit.
+- *Discoverability:* no first-session "how do I exit?" or "what keys exist?"
+  reports in usability tests.
+- *Quality gates:* coverage floor held in CI; every new command ships with a
+  mutation-checked test; usability sessions run each phase with at least five
+  developers who have never used the tool.
+
+* Guardrails and non-goals
+
+- Shape Artist stays a *deterministic text editor for diagrams*, not a canvas
+  application; the buffer text is the only source of truth.
+- No mandatory dependencies beyond Emacs; richer UIs are optional layers.
+- Automatic layout and routing must be deterministic, previewable, and
+  reversible; no continuously moving layouts.
+- Raising the minimum Emacs version (today 27.1, not yet verified by CI) is a
+  conscious, documented decision, not a side effect.
+
+* Open questions for the maintainer
+
+1. *Keymap philosophy:* vim-first (today) with presets, or neutral by default?
+2. *=picture-mode= dependency (B5):* replace it, or confine it to the isolated
+   edit session?
+3. *Scope of interchange (F4):* which formats are worth supporting well rather
+   than shallowly?
+4. *Minimum Emacs version* and the real package URL — both gate distribution.
+5. *Name and positioning* for discovery: how it should be described on MELPA and
+   in the first paragraph of the README.
+
+* Relationship to the other roadmaps
+
+| Document                | Layer                                   | Examples                                  |
+|-------------------------+-----------------------------------------+-------------------------------------------|
+| =docs/feature-roadmap.md= | Engine: operations, layout, routing, indexing | operation protocol, Manhattan routing |
+| =future.yml=            | Mapping of prototype ideas to features  | trunk/ prototype coverage                 |
+| =doc/ux-roadmap.org=    | Experience: onboarding, editing flow, polish, reach | this document                    |
+
+Dependency summary: the operation protocol enables one-undo (A2), previews (D1),
+and tidy (F3); routing enables the connect tool (D6); stable shape IDs enable
+semantic diff (F5).
