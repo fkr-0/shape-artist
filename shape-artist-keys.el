@@ -7,6 +7,7 @@
 
 ;;; Code:
 
+(require 'easymenu)
 (require 'shape-artist-core)
 (require 'shape-artist-ui)
 (require 'shape-artist-select)
@@ -18,6 +19,10 @@
 (declare-function shape-artist-repair-at-point "shape-artist-explain")
 (declare-function shape-artist-repair-all "shape-artist-explain")
 (declare-function shape-artist-export "shape-artist-export")
+
+(declare-function shape-artist-help-palette "shape-artist-help")
+(declare-function shape-artist-help-cheatsheet "shape-artist-help")
+(declare-function shape-artist-tutorial "shape-artist-tutorial")
 
 (defvar shape-artist-diagnose-map
   (let ((map (make-sparse-keymap)))
@@ -445,6 +450,27 @@
       "a" #'shape-artist-ui-toggle
       "E" shape-artist-diagnose-map
       "u" #'shape-artist-undo)))
+
+(easy-menu-define shape-artist-menu shape-artist-core-mode-map
+  "Menu bar entry for Shape Artist, for discovering commands without the keyboard."
+  '("Artist"
+    ["Key hints" shape-artist-help-hint]
+    ["Command palette" shape-artist-help-palette]
+    ["Cheat sheet" shape-artist-help-cheatsheet]
+    ["Interactive tutorial" shape-artist-tutorial]
+    "---"
+    ["Toggle sidebar" shape-artist-ui-toggle]
+    ["Show outline" shape-artist-ui-show-outline]
+    ["Center diagram" shape-artist-ui-center-diagram]
+    ["Undo" shape-artist-undo]
+    "---"
+    ("Diagnose and export"
+     ["Explain a box that is not detected" shape-artist-explain-at-point]
+     ["Repair the box at point" shape-artist-repair-at-point]
+     ["Repair every near-miss box" shape-artist-repair-all]
+     ["Export as Mermaid, DOT, or SVG..." shape-artist-export])
+    "---"
+    ["Quit Shape Artist" shape-artist-quit]))
 
 (shape-artist--install-modal-dispatch-keymap)
 

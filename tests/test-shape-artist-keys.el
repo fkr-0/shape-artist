@@ -228,5 +228,45 @@ the dispatcher intentionally does nothing in that mode.")
       (call-interactively #'shape-artist-mode)
       (should-not shape-artist-core-mode))))
 
+;;; --- Menu Bar Tests ---
+
+(defun test-shape-artist-keys--menu-commands (keymap)
+  "Return every command symbol bound in menu KEYMAP, descending into submenus."
+  (let (commands)
+    (map-keymap
+     (lambda (_event binding)
+       (cond
+        ((and (consp binding) (eq (car binding) 'menu-item))
+         (let ((target (nth 2 binding)))
+           (cond ((and (symbolp target) target (not (keymapp target)))
+                  (push target commands))
+                 ((keymapp target)
+                  (setq commands (append (test-shape-artist-keys--menu-commands target)
+                                         commands))))))
+        ((and (consp binding) (stringp (car binding)))
+         (let ((target (cdr binding)))
+           (when (and (symbolp target) target (not (keymapp target)))
+             (push target commands))))
+        ((keymapp binding)
+         (setq commands (append (test-shape-artist-keys--menu-commands binding)
+                                commands)))))
+     keymap)
+    commands))
+
+(ert-deftest test-shape-artist-keys-menu-bar-entry-offers-only-real-commands ()
+  "The Artist menu exists, covers the main features, and every item is a command."
+  (let ((menu (lookup-key shape-artist-core-mode-map [menu-bar artist])))
+    (should (keymapp menu))
+    (let ((commands (test-shape-artist-keys--menu-commands menu)))
+      (should (> (length commands) 8))
+      (dolist (command commands)
+        (ert-info ((format "menu item %s" command))
+          (should (commandp command))))
+      (dolist (expected '(shape-artist-help-hint shape-artist-help-cheatsheet
+                          shape-artist-tutorial shape-artist-ui-toggle
+                          shape-artist-undo shape-artist-explain-at-point
+                          shape-artist-export shape-artist-quit))
+        (should (memq expected commands))))))
+
 (provide 'test-shape-artist-keys)
 ;;; test-shape-artist-keys.el ends here
