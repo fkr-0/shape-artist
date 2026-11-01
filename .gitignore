@@ -11,7 +11,15 @@ tmp/
 *.elc~
 
 *.md
+# The changelog is release documentation and must be version-controlled.
+!CHANGELOG.md
 
 .eldev/
 dist/
 *.tgz
+
+# Local incubation/reference archive; not package source or a Git submodule.
+trunk/
+
+# Local agent/bridge checkpoint state; machine-specific, not project source.
+.ws-bridge/
