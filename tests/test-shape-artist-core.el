@@ -631,4 +631,236 @@ Each buffer restores the cursor type it had when *it* entered artist mode."
       (move-to-column 2)
       (should (eq (char-after) ?-)))))
 
+;;; --- DRAW-mode Movement Tests ---
+
+(defmacro test-artist-core-with-plain-buffer (content &rest body)
+  "Run BODY in a temp buffer holding CONTENT with sidebar updates disabled."
+  (declare (indent 1))
+  `(test-artist-with-buffer
+       ,content
+     (let ((shape-artist--update-sidebar-fn nil))
+       ,@body)))
+
+(defun test-artist-core--grid-rectangular-p ()
+  "Return non-nil when every line of the current buffer has the same width."
+  (= 1 (length (delete-dups (mapcar #'length (shape-artist--get-lines))))))
+
+(defun test-artist-core--char-at (row col)
+  "Return the character at ROW,COL of the current buffer."
+  (save-excursion
+    (shape-artist--goto-row-col row col)
+    (char-after)))
+
+(ert-deftest test-artist-core-draw-move-right-draws-dash-and-advances ()
+  "Moving right in DRAW mode leaves a dash behind and advances one column."
+  (test-artist-core-with-plain-buffer "     "
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-draw-move-right)
+    (should (eq (test-artist-core--char-at 0 0) ?-))
+    (should (equal (shape-artist--current-row-col) '(0 . 1)))))
+
+(ert-deftest test-artist-core-draw-move-left-draws-dash-and-retreats ()
+  "Moving left in DRAW mode leaves a dash behind and retreats one column."
+  (test-artist-core-with-plain-buffer "     "
+    (shape-artist--goto-row-col 0 3)
+    (shape-artist-draw-move-left)
+    (should (eq (test-artist-core--char-at 0 3) ?-))
+    (should (equal (shape-artist--current-row-col) '(0 . 2)))))
+
+(ert-deftest test-artist-core-draw-move-down-draws-bar-and-descends ()
+  "Moving down in DRAW mode leaves a vertical bar and advances one row."
+  (test-artist-core-with-plain-buffer "  \n  "
+    (shape-artist--goto-row-col 0 1)
+    (shape-artist-draw-move-down)
+    (should (eq (test-artist-core--char-at 0 1) ?|))
+    (should (equal (shape-artist--current-row-col) '(1 . 1)))))
+
+(ert-deftest test-artist-core-draw-move-up-draws-bar-and-ascends ()
+  "Moving up in DRAW mode leaves a vertical bar and retreats one row."
+  (test-artist-core-with-plain-buffer "  \n  "
+    (shape-artist--goto-row-col 1 1)
+    (shape-artist-draw-move-up)
+    (should (eq (test-artist-core--char-at 1 1) ?|))
+    (should (equal (shape-artist--current-row-col) '(0 . 1)))))
+
+(ert-deftest test-artist-core-draw-moves-expand-canvas-at-trailing-edges ()
+  "Drawing off the right or bottom edge grows the canvas and keeps drawing."
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 1)
+    (shape-artist-draw-move-right)
+    (should (= (shape-artist--max-line-length) 3))
+    (should (equal (shape-artist--current-row-col) '(0 . 2)))
+    (should (eq (test-artist-core--char-at 0 1) ?-)))
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-draw-move-down)
+    (should (= (shape-artist--line-count) 2))
+    (should (equal (shape-artist--current-row-col) '(1 . 0)))
+    (should (eq (test-artist-core--char-at 0 0) ?|))
+    (should (test-artist-core--grid-rectangular-p))))
+
+(ert-deftest test-artist-core-draw-moves-expand-canvas-at-leading-edges ()
+  "Drawing off the left or top edge grows the canvas and keeps the stroke."
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-draw-move-left)
+    (should (= (shape-artist--max-line-length) 3))
+    (should (equal (shape-artist--current-row-col) '(0 . 0)))
+    ;; The stroke shifted right with the content when the canvas grew.
+    (should (eq (test-artist-core--char-at 0 1) ?-)))
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-draw-move-up)
+    (should (= (shape-artist--line-count) 2))
+    (should (equal (shape-artist--current-row-col) '(0 . 0)))
+    (should (eq (test-artist-core--char-at 1 0) ?|))))
+
+;;; --- MOVE-mode Edge Expansion Tests ---
+
+(ert-deftest test-artist-core-move-commands-expand-canvas-at-every-edge ()
+  "Cursor moves past any canvas edge grow the canvas instead of failing."
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 1)
+    (shape-artist-move-right)
+    (should (= (shape-artist--max-line-length) 3))
+    (should (equal (shape-artist--current-row-col) '(0 . 2))))
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-move-down)
+    (should (= (shape-artist--line-count) 2))
+    (should (equal (shape-artist--current-row-col) '(1 . 0)))
+    ;; The new row spans the whole canvas, not just up to the cursor column.
+    (should (test-artist-core--grid-rectangular-p)))
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-move-left)
+    (should (= (shape-artist--max-line-length) 3))
+    (should (equal (shape-artist--current-row-col) '(0 . 0))))
+  (test-artist-core-with-plain-buffer "ab"
+    (shape-artist--goto-row-col 0 0)
+    (shape-artist-move-up)
+    (should (= (shape-artist--line-count) 2))
+    (should (equal (shape-artist--current-row-col) '(0 . 0)))))
+
+;;; --- Commit, Tool, and Undo Tests ---
+
+(ert-deftest test-artist-core-commit-stay-and-preview-keep-mode ()
+  "Committing a shape via commit-stay or commit-preview does not change mode."
+  (dolist (commit '(shape-artist-commit-stay shape-artist-commit-preview))
+    (test-artist-core-with-plain-buffer "     \n     \n     "
+      (setq shape-artist--mode 'draw)
+      (setq shape-artist--anchor '(0 . 0))
+      (shape-artist--goto-row-col 2 4)
+      (funcall commit)
+      (should (eq shape-artist--mode 'draw))
+      (should-not shape-artist--anchor)
+      (should (eq (test-artist-core--char-at 0 0) ?+))
+      (should (eq (test-artist-core--char-at 2 4) ?+)))))
+
+(ert-deftest test-artist-core-pick-tool-sets-draw-char ()
+  "Picking a tool stores the chosen character as the draw character."
+  (test-artist-core-with-plain-buffer "abc"
+    (cl-letf (((symbol-function 'read-char) (lambda (&rest _) ?#)))
+      (shape-artist-pick-tool))
+    (should (eq shape-artist--draw-char ?#))))
+
+(ert-deftest test-artist-core-undo-delegates-to-emacs-undo ()
+  "`shape-artist-undo' is a thin wrapper over `undo'."
+  (let ((called 0))
+    (cl-letf (((symbol-function 'undo) (lambda (&rest _) (setq called (1+ called)))))
+      (shape-artist-undo))
+    (should (= called 1))))
+
+;;; --- Normalize Interactive Spec Tests ---
+
+(ert-deftest test-artist-core-normalize-interactive-reads-padding-and-title ()
+  "Interactively, normalize reads padding numbers and an optional title."
+  (let ((expected (test-artist-with-buffer "   \n a \n   "
+                    (shape-artist-normalize '(1 1 1 1) "T")
+                    (buffer-string))))
+    (test-artist-core-with-plain-buffer "   \n a \n   "
+      (cl-letf (((symbol-function 'read-string)
+                 (let ((answers (list "1 1 1 1" "T")))
+                   (lambda (&rest _) (pop answers)))))
+        (call-interactively #'shape-artist-normalize))
+      (should (equal (buffer-string) expected))
+      (should (string-match-p "T" (buffer-string))))))
+
+(ert-deftest test-artist-core-normalize-interactive-empty-title-skips-box ()
+  "An empty title answer means no title box is drawn."
+  (test-artist-core-with-plain-buffer "   \n a \n   "
+    (cl-letf (((symbol-function 'read-string)
+               (let ((answers (list "0 0 0 0" "")))
+                 (lambda (&rest _) (pop answers)))))
+      (call-interactively #'shape-artist-normalize))
+    (should (equal (buffer-string) "a"))))
+
+;;; --- Post-Command Hook Tests ---
+
+(ert-deftest test-artist-core-post-command-debounces-sidebar-updates ()
+  "Each command reschedules a single idle sidebar refresh for this buffer."
+  (let ((scheduled nil)
+        (cancelled nil)
+        (updates 0))
+    (test-artist-with-buffer "abc"
+      (let ((shape-artist--update-sidebar-fn (lambda () (setq updates (1+ updates))))
+            (shape-artist--sidebar-timer nil))
+        (cl-letf (((symbol-function 'run-with-idle-timer)
+                   (lambda (secs _repeat fn &rest _)
+                     (let ((timer (list 'fake-timer secs fn)))
+                       (push timer scheduled)
+                       timer)))
+                  ((symbol-function 'cancel-timer)
+                   (lambda (timer) (push timer cancelled))))
+          (shape-artist--post-command)
+          (should (= (length scheduled) 1))
+          (should (null cancelled))
+          ;; A second command cancels the pending timer before rescheduling.
+          (let ((first (car scheduled)))
+            (shape-artist--post-command)
+            (should (equal cancelled (list first))))
+          (should (= (length scheduled) 2))
+          ;; Firing the latest timer refreshes the sidebar from this buffer.
+          (funcall (nth 2 (car scheduled)))
+          (should (= updates 1)))))
+    ;; A timer firing after its buffer was killed must be harmless.
+    (let ((fn (nth 2 (car scheduled))))
+      (should-not (funcall fn))
+      (should (= updates 1)))))
+
+(ert-deftest test-artist-core-post-command-updates-preview-when-anchored ()
+  "With an anchor set, every command refreshes the shape preview."
+  (test-artist-core-with-plain-buffer "     \n     \n     "
+    (setq shape-artist--anchor '(0 . 0))
+    (shape-artist--goto-row-col 2 4)
+    (shape-artist--post-command)
+    (should shape-artist--preview-overlays)))
+
+;;; --- Lifecycle Tests ---
+
+(ert-deftest test-artist-core-disable-cancels-pending-sidebar-timer ()
+  "Turning the mode off cancels and clears a pending sidebar timer."
+  (test-artist-core-with-plain-buffer "abc"
+    (shape-artist-core-mode 1)
+    (let ((timer (run-with-idle-timer 3600 nil #'ignore)))
+      (setq shape-artist--sidebar-timer timer)
+      (shape-artist-core-mode -1)
+      (should-not shape-artist--sidebar-timer)
+      (should-not (memq timer timer-idle-list)))))
+
+(ert-deftest test-artist-core-quit-disables-mode-and-returns-to-fundamental ()
+  "Quitting artist mode switches the buffer to `fundamental-mode'."
+  (test-artist-core-with-plain-buffer "abc"
+    (shape-artist-core-mode 1)
+    (shape-artist-quit)
+    (should-not shape-artist-core-mode)
+    (should (eq major-mode 'fundamental-mode))))
+
+(ert-deftest test-artist-core-enter-mode-rejects-unknown-mode ()
+  "Entering a mode with no presentation spec is a user error."
+  (test-artist-core-with-plain-buffer "abc"
+    (setq shape-artist--mode 'move)
+    (should-error (shape-artist--enter-mode 'bogus) :type 'user-error)
+    (should (eq shape-artist--mode 'move))))
+
 ;;; test-shape-artist-core.el ends here
