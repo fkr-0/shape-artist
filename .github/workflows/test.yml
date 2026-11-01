@@ -31,3 +31,27 @@ jobs:
 
       - name: Lint
         run: eldev lint
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: purcell/setup-emacs@master
+        with:
+          version: '29.1'
+
+      - uses: emacs-eldev/setup-eldev@v1
+
+      # Fails the build if total line coverage drops below the floor.  Coverage is
+      # edebug-based (undercover) and slightly under-reports functions with a
+      # computed `interactive' spec, so the floor is deliberately conservative.
+      - name: Coverage
+        run: scripts/coverage.sh --min 95
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lcov
+          path: coverage/lcov.info
+

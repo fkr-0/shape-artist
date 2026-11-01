@@ -6,6 +6,11 @@
 #                   (default: $COVERAGE_MIN, or no threshold).
 #
 # Output: coverage/lcov.info (git-ignored) plus a summary on stdout.
+#
+# Known limitation: coverage is edebug-based (undercover).  Functions with a
+# computed `(interactive (list ...))' spec are reported as uncovered unless they
+# are invoked through `call-interactively', even when their bodies run, so the
+# total is a slight under-estimate.  Test such commands interactively.
 set -euo pipefail
 
 min="${COVERAGE_MIN:-}"

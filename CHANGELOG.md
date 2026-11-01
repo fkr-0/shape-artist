@@ -9,6 +9,22 @@ before the `0.2.0` work and was never tagged.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/coverage.sh`: line-coverage reporting (undercover) with an optional
+  `--min PERCENT` floor, and a CI coverage job enforcing 95%. Line coverage
+  rose from 78.3% to 97.4% with 119 new tests (253 to 372).
+
+### Known issues
+
+- Re-enabling `shape-artist-core-mode` in a buffer that is already in
+  `picture-mode` signals "You are already editing a picture". This affects
+  enabling twice and toggling `shape-artist-mode` off and back on in one buffer;
+  `shape-artist-quit` first avoids it. Present since 0.1.0 and tracked by two
+  expected-failure tests.
+- Moving a rectangle along an attached vertical connector can shrink the
+  connector to a single cell, which is then drawn as a stray `-`.
+
 ## [0.2.1] - 2026-11-01
 
 ### Fixed

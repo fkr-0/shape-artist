@@ -206,6 +206,22 @@ The suite includes modal end-to-end tests that drive active keymaps through
 MOVE, DRAW, SELECT, and SHAPE-EDIT.  These tests cover Evil-style operation even
 when Evil is absent, plus delayed Evil loading when the dependency is available.
 
+** Coverage
+
+#+begin_example
+scripts/coverage.sh              # per-file summary, writes coverage/lcov.info
+scripts/coverage.sh --min 95     # also fail below 95% total line coverage
+#+end_example
+
+Coverage is measured with =undercover= (edebug-based) in a scratch copy of the
+sources, so stale =.elc= files cannot hide a file from the report.  Commands
+with a computed =interactive= spec are only credited when a test calls them via
+=call-interactively=, so the total slightly under-estimates real coverage.
+
+Two known bugs are recorded as ERT /expected failures/ rather than skipped: the
+mode cannot be re-enabled in a buffer that is already in =picture-mode=.  ERT
+reports an unexpected pass once they are fixed.
+
 ** Linting
 
 #+begin_example
@@ -215,7 +231,8 @@ eldev lint
 ** CI
 
 Tests run on Emacs 27.1, 28.1, 29.1, and snapshot via GitHub
-Actions.  See =.github/workflows/test.yml=.
+Actions, plus a coverage job (Emacs 29.1) that enforces a 95% line-coverage
+floor and uploads the lcov report.  See =.github/workflows/test.yml=.
 
 * License
 
