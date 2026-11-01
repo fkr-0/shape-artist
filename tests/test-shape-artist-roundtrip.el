@@ -23,8 +23,12 @@
 
 (defconst test-shape-artist-roundtrip--cols 40 "Width of the generated canvas.")
 (defconst test-shape-artist-roundtrip--rows 16 "Height of the generated canvas.")
-(defconst test-shape-artist-roundtrip--diagrams 40
-  "How many seeded diagrams each property test checks.")
+(defconst test-shape-artist-roundtrip--diagrams
+  (let ((n (getenv "SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS")))
+    (if (and n (> (string-to-number n) 0)) (string-to-number n) 40))
+  "How many seeded diagrams each property test checks.
+Override with the environment variable SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS; the
+coverage script lowers it because edebug instrumentation is much slower.")
 
 ;;; --- Seeded generation ---------------------------------------------------
 

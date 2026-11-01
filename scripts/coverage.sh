@@ -51,6 +51,7 @@ find "$scratch" -name '*.elc' -delete
 # UNDERCOVER_FORCE: undercover is otherwise inert outside recognised CI services.
 (cd "$scratch" &&
  UNDERCOVER_FORCE=true SHAPE_ARTIST_COVERAGE_REPORT="$report" \
+   SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS="${SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS:-6}" \
    emacs --batch -L "$scratch" -L "$scratch/tests" "${load_args[@]}" \
          -l scripts/coverage.el) \
   > coverage/test-output.log 2>&1 || {
