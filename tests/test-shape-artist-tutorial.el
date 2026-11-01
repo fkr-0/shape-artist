@@ -140,7 +140,11 @@ Both tutorial buffers and the progress directory are removed afterwards."
     (should (commandp command))
     (setq this-command command)
     (call-interactively command)
-    (run-hooks 'post-command-hook)))
+    ;; Run only this buffer's own hook functions.  The global value (marked `t'
+    ;; in the local list) belongs to other packages, for example Evil, which
+    ;; cannot run in an uninitialised test session.
+    (let ((post-command-hook (remq t post-command-hook)))
+      (run-hooks 'post-command-hook))))
 
 (defun test-shape-artist-tutorial--check ()
   "Run the debounced check directly in the practice buffer; return new ids."

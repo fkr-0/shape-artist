@@ -976,4 +976,34 @@ Each buffer restores the cursor type it had when *it* entered artist mode."
       (shape-artist--commit-shape)
       (should (equal (car (shape-artist--get-lines)) "-----")))))
 
+;;; --- Evil Integration Guard Tests ---
+
+(defvar evil-local-mode)
+
+(ert-deftest test-artist-core-mode-changes-leave-evil-alone-when-evil-is-off ()
+  "With Evil loaded but not active in the buffer, Evil states are not driven."
+  (let ((calls nil))
+    (cl-letf (((symbol-function 'evil-normal-state)
+               (lambda (&rest _) (push 'normal calls)))
+              ((symbol-function 'evil-change-state)
+               (lambda (&rest args) (push (cons 'change args) calls))))
+      (test-artist-core-with-plain-buffer "abc"
+        (let ((evil-local-mode nil))
+          (dolist (mode '(draw select shape-edit move))
+            (shape-artist--enter-mode mode))))
+      (should-not calls))))
+
+(ert-deftest test-artist-core-mode-changes-drive-evil-when-it-is-active ()
+  "With Evil active in the buffer, each Shape Artist mode selects its Evil state."
+  (let ((calls nil))
+    (cl-letf (((symbol-function 'evil-normal-state)
+               (lambda (&rest _) (push 'normal calls)))
+              ((symbol-function 'evil-change-state)
+               (lambda (state &rest _) (push state calls))))
+      (test-artist-core-with-plain-buffer "abc"
+        (let ((evil-local-mode t))
+          (dolist (mode '(draw select shape-edit move))
+            (shape-artist--enter-mode mode))))
+      (should (equal (nreverse calls) '(artist select shape-edit normal))))))
+
 ;;; test-shape-artist-core.el ends here

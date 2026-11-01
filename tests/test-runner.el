@@ -46,6 +46,12 @@
 (load (expand-file-name "test-shape-artist-mouse.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-help.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-tutorial.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-guides.el"
                         (file-name-directory
                          (or load-file-name default-directory))))

@@ -230,9 +230,14 @@ Hook functions receive OLD-MODE and NEW-MODE as arguments.")
   "Return PROPERTY from MODE's presentation specification."
   (plist-get (shape-artist--mode-spec mode) property))
 
+(defvar evil-local-mode)
+
 (defun shape-artist--sync-evil-state (mode)
-  "Synchronize optional Evil state with Shape Artist MODE."
+  "Synchronize optional Evil state with Shape Artist MODE.
+Only when Evil is active in this buffer: merely having Evil loaded, with
+`evil-mode' off, must not start driving its state machine."
   (cond
+   ((not (bound-and-true-p evil-local-mode)) nil)
    ((eq mode 'move)
     (when (fboundp 'evil-normal-state)
       (evil-normal-state)))

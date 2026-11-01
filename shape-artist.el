@@ -36,6 +36,8 @@
 (require 'shape-artist-diagram-outline)
 (require 'shape-artist-embed)
 (require 'shape-artist-mouse)
+(require 'shape-artist-help)
+(require 'shape-artist-tutorial)
 
 ;;;###autoload
 (defun shape-artist-scratch ()
@@ -44,7 +46,9 @@
   (let ((buf (generate-new-buffer "*shape-artist*")))
     (switch-to-buffer buf)
     (shape-artist-core-mode 1)
-    (shape-artist-ui-show)))
+    (shape-artist-ui-show)
+    ;; Last, so the one-time hint is not overwritten by other messages.
+    (shape-artist-tutorial-maybe-hint)))
 
 ;;;###autoload
 (defun shape-artist-mode (&optional arg)

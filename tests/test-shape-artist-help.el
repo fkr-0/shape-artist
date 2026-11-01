@@ -122,8 +122,9 @@
                   (shape-artist-select-start move "C-n")
                   (shape-artist-select-start draw nil)
                   (shape-artist-undo draw "u")
-                  (shape-artist-undo move nil)
-                  (shape-artist-ui-toggle select "u")
+                  (shape-artist-undo move "u")
+                  (shape-artist-undo select "u")
+                  (shape-artist-ui-toggle select "a")
                   (shape-artist-move-left draw nil)
                   (no-such-command move nil)))
     (ert-info ((format "%S" case))
@@ -291,9 +292,9 @@
   (let ((entries (shape-artist-help--palette-entries 'draw)))
     (dolist (case '((shape-artist-commit-and-exit "This mode")
                     (shape-artist-pick-tool "This mode")
-                    (shape-artist-undo "This mode")
-                    (shape-artist-ui-show "Navigate & view")
-                    (shape-artist-shapes-parse "Navigate & view")
+                    (shape-artist-undo "Navigate & view")
+                    (shape-artist-ui-toggle "Navigate & view")
+                    (shape-artist-shapes-parse "Other modes")
                     (shape-artist-guide-create-horizontal "Guides & grid")
                     (shape-artist-snap-toggle "Guides & grid")
                     (shape-artist-grid-toggle "Guides & grid")
@@ -323,7 +324,8 @@
                                   (equal (plist-get entry :group) "This mode"))
                                 entries)))
     (should (equal (mapcar (lambda (entry) (plist-get entry :command)) this-mode)
-                   '(shape-artist-select-next shape-artist-select-prev
+                   '(shape-artist-shapes-parse shape-artist-select-next
+                                              shape-artist-select-prev
                                               shape-artist-select-toggle-current
                                               shape-artist-select-all
                                               shape-artist-select-clear-selected
@@ -341,7 +343,7 @@
                               :modes)
                    '(shape-edit)))
     (should (equal (plist-get (test-shape-artist-help--entry
-                               entries 'shape-artist-ui-show)
+                               entries 'shape-artist-ui-toggle)
                               :modes)
                    test-shape-artist-help--modes))))
 
@@ -458,8 +460,9 @@
          (next (test-shape-artist-help--entry entries 'shape-artist-select-next)))
     (should (eq (completion-metadata-get metadata 'category)
                 'shape-artist-action))
+    ;; Undo is available in every mode, so it is a general action.
     (should (equal (funcall group-fn (plist-get undo :candidate) nil)
-                   "This mode"))
+                   "Navigate & view"))
     (should (equal (funcall group-fn (plist-get next :candidate) nil)
                    "Other modes"))
     (should (equal (funcall group-fn "anything" t) "anything"))
@@ -474,8 +477,8 @@
     (should (equal (all-completions "" table)
                    (mapcar (lambda (entry) (plist-get entry :candidate)) entries)))
     (should (equal (all-completions "Undo" table)
-                   '("Undo draw step" "Undo guide change")))
-    (should (equal (try-completion "Undo draw" table) "Undo draw step"))))
+                   '("Undo last change" "Undo guide change")))
+    (should (equal (try-completion "Undo last" table) "Undo last change"))))
 
 (ert-deftest test-shape-artist-help-palette-table-groups-through-completion-api ()
   "Group titles reach consumers via the standard completion-metadata API."
@@ -709,8 +712,9 @@ REQUIRE-MATCH argument of the call are stored in `test-shape-artist-help--read'.
   (let ((findings (shape-artist-help-audit
                    '(((draw) "w" "Nothing" shape-artist-pick-tool)
                      ((move) "C-n" "Select" shape-artist-select-start)))))
+    ;; `C-n' is documented for MOVE, so only the made-up `w' is reported.
     (should (equal (test-shape-artist-help--audit-summary findings)
-                   '(("w" draw) ("C-n" move))))
+                   '(("w" draw))))
     (should (string-match-p "not bound in the DRAW documentation keymap"
                             (plist-get (car findings) :problem)))
     (should (eq (plist-get (car findings) :command) 'shape-artist-pick-tool))))
@@ -782,7 +786,6 @@ REQUIRE-MATCH argument of the call are stored in `test-shape-artist-help--read'.
 Currently the table disagrees with the documentation keymaps (see
 `shape-artist-help-audit'), so this is expected to fail.  Remove the
 `:expected-result' marker once the table or the maps are fixed."
-  :expected-result :failed
   (should-not (shape-artist-help-audit)))
 
 ;;; --- Small helpers ---

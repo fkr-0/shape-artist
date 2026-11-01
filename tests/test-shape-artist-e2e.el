@@ -76,7 +76,7 @@
   (test-shape-artist-e2e-with-artist-buffer
       "+---+\n|   |\n+---+"
     (should (eq (key-binding (kbd "?") t)
-                #'shape-artist-ui-command-menu))
+                #'shape-artist-help-hint))
     (should (eq (key-binding (kbd "o") t)
                 #'shape-artist-ui-show-outline))
     (should (eq (key-binding (kbd "z") t)
