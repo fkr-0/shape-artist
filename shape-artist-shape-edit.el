@@ -13,10 +13,30 @@
 (defvar-local shape-artist--edit-target-overlays nil
   "Overlays identifying active SHAPE-EDIT targets.")
 
+(defvar-local shape-artist--edit-handle-overlays nil
+  "Overlays marking the corner handles of the rectangle being edited.")
+
 (defun shape-artist-shape-edit-clear-overlays ()
-  "Remove active SHAPE-EDIT target overlays."
+  "Remove active SHAPE-EDIT target and handle overlays."
   (mapc #'delete-overlay shape-artist--edit-target-overlays)
-  (setq shape-artist--edit-target-overlays nil))
+  (setq shape-artist--edit-target-overlays nil)
+  (mapc #'delete-overlay shape-artist--edit-handle-overlays)
+  (setq shape-artist--edit-handle-overlays nil))
+
+(defun shape-artist-shape-edit--add-handles (rect)
+  "Mark the four corners of RECT with handle overlays."
+  (let ((x (oref rect x)) (y (oref rect y))
+        (w (oref rect width)) (h (oref rect height)))
+    (dolist (corner (list (cons y x) (cons y (+ x w))
+                          (cons (+ y h) x) (cons (+ y h) (+ x w))))
+      (save-excursion
+        (shape-artist--goto-row-col (car corner) (cdr corner))
+        (unless (eobp)
+          (let ((overlay (make-overlay (point) (1+ (point)))))
+            (overlay-put overlay 'face 'shape-artist-handle-face)
+            (overlay-put overlay 'priority 20)
+            (overlay-put overlay 'help-echo "Drag to resize")
+            (push overlay shape-artist--edit-handle-overlays)))))))
 
 (defun shape-artist-shape-edit-refresh-overlays ()
   "Refresh strong visual indicators for active edit targets."
@@ -29,7 +49,11 @@
         (setq shape-artist--edit-target-overlays
               (append (shape-artist-diagram--highlight-shape
                        shape 'shape-artist-edit-target-face)
-                      shape-artist--edit-target-overlays))))))
+                      shape-artist--edit-target-overlays)))
+      ;; Handles only make sense for one rectangle, not for a group.
+      (when (and (= (length targets) 1)
+                 (shape-artist-diagram-rectangle-p (car targets)))
+        (shape-artist-shape-edit--add-handles (car targets))))))
 
 (declare-function shape-artist--select-clear-overlays "shape-artist-select")
 (declare-function shape-artist--select-clear-selected-overlays "shape-artist-select")

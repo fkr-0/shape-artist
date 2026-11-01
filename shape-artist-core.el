@@ -169,6 +169,16 @@ keeps recognising them as connectors."
   "Face for the active SHAPE-EDIT target or group."
   :group 'shape-artist)
 
+(defface shape-artist-handle-face
+  '((t :inherit highlight :inverse-video t :weight bold))
+  "Face for the corner handles of the rectangle being edited."
+  :group 'shape-artist)
+
+(defface shape-artist-ghost-face
+  '((t :inherit secondary-selection :extend t))
+  "Face for the preview outline shown while dragging a shape."
+  :group 'shape-artist)
+
 (defconst shape-artist--mode-specs
   '((move
      :label "MOVE"

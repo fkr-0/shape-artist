@@ -35,6 +35,7 @@
 (require 'shape-artist-diagram-parse)
 (require 'shape-artist-diagram-outline)
 (require 'shape-artist-embed)
+(require 'shape-artist-mouse)
 
 ;;;###autoload
 (defun shape-artist-scratch ()
