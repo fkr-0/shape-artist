@@ -11,4 +11,6 @@
 ;; `trunk/' contains untracked prototype/reference modules imported from the
 ;; Artist-Assist experiments.  They intentionally mention incomplete aa-* modules
 ;; and must not be treated as production Shape Artist sources.
-(setq eldev-standard-excludes `(:or ,eldev-standard-excludes "./trunk/"))
+;; `scripts/' holds development tooling (e.g. the coverage driver), not package
+;; sources: keep it out of linting and out of the built package.
+(setq eldev-standard-excludes `(:or ,eldev-standard-excludes "./trunk/" "./scripts/"))

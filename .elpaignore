@@ -9,3 +9,4 @@ Eldev
 .kilo/
 dist/
 *.tgz
+scripts/
