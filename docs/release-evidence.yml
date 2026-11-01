@@ -13,10 +13,10 @@ release:
 
 revision:
   branch: main
-  verified_at_commit: fdfd1f5
+  verified_at_commit: fd7d39c
   working_tree_clean: true
   note: >-
-    Verified at the 0.3.0 release commit. Only the local bridge.yml workflow
+    Verified at the commit whose remote CI run is recorded below. Only the local bridge.yml workflow
     file is intentionally untracked. Versions 0.1.0 to 0.2.1 are tagged
     retroactively on the commits that introduced them.
 
@@ -38,10 +38,10 @@ verification:
       eldev package && eldev doctor
     result: passed
     evidence:
-      ert_total: 700
-      ert_passed: 700
+      ert_total: 705
+      ert_passed: 705
       ert_unexpected: 0
-      ert_without_evil: "699 passed, 1 skipped (the Evil-only test)"
+      ert_without_evil: "704 passed, 1 skipped (the Evil-only test)"
       doctests: 9
       lint: passed
       byte_compile: passed
@@ -85,13 +85,14 @@ verification:
 artifact:
   path: dist/shape-artist-0.3.0.tar
   size_bytes: 430080
-  sha256: 35045706dcaee5535a8f3bf5d72995b3e8cc207558bab7429ef9fb6d05b86239
+  sha256: 66bdd8353baf60428f9b765685ed729134b210716dec94490c6d1792b20c601b
   modules: 20
   smoke_loaded_from_extracted_artifact: true
   excludes_verified: [tests, scripts, markdown, workflows, license]
 
 ci_contract:
   workflow: .github/workflows/test.yml
+  repository: https://github.com/fkr-0/shape-artist
   emacs_matrix:
     - 27.1
     - 28.1
@@ -101,10 +102,15 @@ ci_contract:
   jobs_run_lint: true
   jobs_run_coverage: true
   coverage_floor_percent: 95
+  result: passed
+  run: https://github.com/fkr-0/shape-artist/actions/runs/41278649785
   note: >-
-    Verified locally on Emacs 31.1 only. The remote matrix is the first run on
-    27.1 to 30; any failure there is a release blocker for the compatibility
-    claim.
+    All five jobs passed on a real Emacs 27.1, 28.1, 29.1 and snapshot. The
+    first runs found genuine incompatibilities that the development Emacs 31
+    hid (a setf of plist-get, string-split, an abbreviated project root, older
+    checkdoc rules); all were fixed and a source-scanning test now guards
+    against post-27.1 functions. Coverage runs on the snapshot Emacs because
+    instrumented runs are 10 to 20 times slower on Emacs 29.
 
 release_metadata:
   changelog: CHANGELOG.md
@@ -132,4 +138,4 @@ release_decision:
   code_and_test_state: ready
   package_artifact_state: ready
   metadata_state: ready
-  overall: ready_pending_remote_ci
+  overall: ready
