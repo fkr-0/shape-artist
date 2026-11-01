@@ -346,6 +346,14 @@ Also assert that applying its edits makes the parser detect the geometry."
     (dolist (miss (test-explain--misses text))
       (should (<= 1 (length (plist-get miss :edits)) 3)))))
 
+(ert-deftest test-shape-artist-explain-small-boxes-need-strong-evidence ()
+  "A tiny box may not need more than a quarter of its perimeter in edits."
+  ;; 8-cell perimeter: two repairs are fine, three are not.
+  (should (test-explain--misses "+-+\n  |\n+ +"))
+  (should-not (test-explain--misses "+ +\n  |\n+ +"))
+  ;; The same three gaps in a larger box are fine.
+  (should (test-explain--misses "+- -+\n    |\n+ --+")))
+
 ;;; --- False positives ---
 
 (ert-deftest test-shape-artist-explain-ignores-valid-box ()
@@ -413,6 +421,15 @@ Also assert that applying its edits makes the parser detect the geometry."
                "+-+\n| |\n+-+\n| |\n+-+\n"))
   (should-not (test-explain--misses
                "+---+\n| a |\n+---+\n| b |\n+---+\n")))
+
+(ert-deftest test-shape-artist-explain-ignores-unparsed-but-valid-boxes ()
+  "A valid box the parser skips (shared wall) is not a heavy-family near-miss."
+  ;; The second box is not detected by the parser (its top row is the first
+  ;; box's bottom row) but is drawn correctly, so nothing may be reported even
+  ;; though a `heavy' reading needs only two edits.
+  (should-not (test-explain--misses "+-+\n| |\n+-+\n| |\n+-+"))
+  (should (equal (test-explain--rects "+-+\n| |\n+-+\n| |\n+-+")
+                 '((0 0 2 2)))))
 
 (ert-deftest test-shape-artist-explain-ignores-far-off-corners ()
   "Distant corners and stray text do not combine into a box."
@@ -651,6 +668,21 @@ Also assert that applying its edits makes the parser detect the geometry."
         (should (= (shape-artist-repair-all) 0))
         (should (equal (buffer-string) after))
         (should-not (shape-artist-explain-near-misses))))))
+
+(ert-deftest test-shape-artist-repair-failure-rolls-everything-back ()
+  "A failure half way through a repair leaves the buffer unchanged."
+  (test-explain--with-buffer "+---+\n|   |\n+===+"
+    (let ((calls 0)
+          (original (symbol-function 'shape-artist-explain--set-cell)))
+      (cl-letf (((symbol-function 'message) #'ignore)
+                ((symbol-function 'shape-artist-explain--set-cell)
+                 (lambda (row col char)
+                   (setq calls (1+ calls))
+                   (when (= calls 2) (error "Simulated failure"))
+                   (funcall original row col char))))
+        (should-error (shape-artist-repair-at-point)))
+      (should (= calls 2))
+      (should (equal (buffer-string) "+---+\n|   |\n+===+")))))
 
 (ert-deftest test-shape-artist-repair-all-nothing-to-do ()
   "Without near-misses repair-all returns zero and says so."
