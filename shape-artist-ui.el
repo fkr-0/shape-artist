@@ -12,6 +12,7 @@
 (require 'shape-artist-diagram-parse)
 (require 'shape-artist-shapes)
 (require 'shape-artist-guides)
+(require 'shape-artist-metadata)
 
 (declare-function shape-artist-diagram-outline-show "shape-artist-diagram-outline")
 
@@ -22,14 +23,6 @@
 
 (defvar-local shape-artist--sidebar-buffer-name nil
   "Name of the sidebar buffer for this artist buffer.")
-
-(defvar shape-artist-ui-use-transient t
-  "When non-nil, use Transient for `shape-artist-ui-command-menu' if available.
-
-The command menu always has a dependency-free `completing-read' fallback.")
-
-(defvar shape-artist--ui-transient-defined nil
-  "Non-nil once the optional Transient prefix has been defined.")
 
 ;;; --- Sidebar Buffer ---
 
@@ -50,13 +43,23 @@ The command menu always has a dependency-free `completing-read' fallback.")
 
 (defun shape-artist--ui-state-section ()
   "Generate state section text."
-  (format "=== State ===\nMode: %s\n"
-          (pcase shape-artist--mode
-            ('move "MOVE")
-            ('draw "DRAW")
-            ('select "SELECT")
-            ('shape-edit "SHAPE-EDIT")
-            (_ "UNKNOWN"))))
+  (let* ((label (shape-artist--mode-property :label))
+         (activity (shape-artist--mode-property :activity))
+         (face (shape-artist--mode-property :face))
+         (hint (shape-artist--mode-property :hint))
+         (canonical (pcase shape-artist--mode
+                      ('move "MOVE")
+                      ('draw "DRAW")
+                      ('select "SELECT")
+                      ('shape-edit "SHAPE-EDIT")
+                      (_ "UNKNOWN"))))
+    (if label
+        (concat "=== State ===\n"
+                (propertize (format " %s · %s " label activity) 'face face)
+                (format "\nMode: %s\n" canonical)
+                (propertize hint 'face 'shadow)
+                "\n")
+      (format "=== State ===\nMode: %s\n" canonical))))
 
 (defun shape-artist--ui-cursor-section ()
   "Generate cursor position section."
@@ -123,9 +126,26 @@ there are no known shapes."
   (let ((bounds (shape-artist--ui-diagram-bounds)))
     (if bounds
         (pcase-let ((`(,min-x ,min-y ,max-x ,max-y ,count) bounds))
-          (format "=== Layout ===\nBounds: (%d,%d)-(%d,%d)\nSize: %dx%d\nShapes: %d\n"
-                  min-x min-y max-x max-y
-                  (- max-x min-x) (- max-y min-y) count))
+          (let* ((graph shape-artist--last-graph)
+                 (connectors (and graph
+                                  (shape-artist-diagram-graph-connectors graph)))
+                 (connections (cl-count-if
+                               (lambda (connector)
+                                 (> (length (shape-artist-diagram-connector-shape-ids
+                                             connector))
+                                    1))
+                               connectors))
+                 (components (and graph
+                                  (shape-artist-diagram-graph-components graph))))
+            (format (concat "=== Layout ===\n"
+                            "Bounds: (%d,%d)-(%d,%d)\n"
+                            "Size: %dx%d\nShapes: %d\n"
+                            "Graph: %d nodes · %d connections · %d components\n")
+                    min-x min-y max-x max-y
+                    (- max-x min-x) (- max-y min-y) count
+                    (if graph (length (shape-artist-diagram-graph-nodes graph)) 0)
+                    connections
+                    (length components))))
       "=== Layout ===\n(no diagram bounds)\n")))
 
 (defun shape-artist-ui-center-diagram ()
@@ -190,16 +210,19 @@ there are no known shapes."
    ((shape-artist-diagram-root-p shape)
     "root")
    ((shape-artist-diagram-rectangle-p shape)
-    (format "rect (%d,%d) %dx%d"
+    (format "rect#%s (%d,%d) %dx%d"
+            (or (shape-artist-metadata-shape-id shape) "?")
             (oref shape x) (oref shape y)
             (oref shape width) (oref shape height)))
    ((shape-artist-diagram-edge-p shape)
-    (format "edge[%s] (%d,%d)->(%d,%d)"
+    (format "edge#%s[%s] (%d,%d)->(%d,%d)"
+            (or (shape-artist-metadata-shape-id shape) "?")
             (oref shape edge-type)
             (oref shape x) (oref shape y)
             (oref shape x2) (oref shape y2)))
    ((shape-artist-diagram-label-p shape)
-    (format "label \"%s\" (%d,%d)"
+    (format "label#%s \"%s\" (%d,%d)"
+            (or (shape-artist-metadata-shape-id shape) "?")
             (oref shape text) (oref shape x) (oref shape y)))
    (t
     (format "node (%d,%d) %dx%d"
@@ -268,6 +291,9 @@ there are no known shapes."
        ((all) "G r" "Load guides" shape-artist-guides-load)
        ((all) "G u" "Undo guide change" shape-artist-guides-undo)
        ((all) "G R" "Redo guide change" shape-artist-guides-redo)
+       ((all) "M w" "Save metadata IDs" shape-artist-metadata-save)
+       ((all) "M r" "Load metadata IDs" shape-artist-metadata-load)
+       ((all) "M d" "Delete saved metadata IDs" shape-artist-metadata-delete-saved)
        ((all) "g" "Parse / refresh shapes" shape-artist-shapes-parse)
        ((move) "SPC" "Start drawing from cursor" shape-artist-enter-draw-and-anchor)
        ((move) "d" "Enter draw mode" shape-artist-enter-draw)
@@ -305,62 +331,10 @@ there are no known shapes."
          (choice (completing-read "Shape Artist action: " choices nil t)))
     (call-interactively (cdr (assoc choice choices)))))
 
-(defun shape-artist-ui--ensure-transient ()
-  "Define and return the optional Transient command menu when available."
-  (when (require 'transient nil t)
-    (unless shape-artist--ui-transient-defined
-      (eval
-       `(,(intern "transient-define-prefix") shape-artist-ui-transient ()
-         "Shape Artist command palette."
-         [["Discover"
-           ("?" "Mode actions..." shape-artist-ui-completing-read-menu)
-           ("a" "Show sidebar" shape-artist-ui-show)
-           ("u" "Toggle sidebar" shape-artist-ui-toggle)
-           ("o" "Outline tree" shape-artist-ui-show-outline)
-           ("z" "Center diagram" shape-artist-ui-center-diagram)
-           ("g" "Parse/refresh" shape-artist-shapes-parse)]
-          ["Guides"
-           ("H" "Horizontal" shape-artist-guide-create-horizontal)
-           ("V" "Vertical" shape-artist-guide-create-vertical)
-           ("D" "Delete nearest" shape-artist-guide-delete-nearest)
-           ("C" "Clear guides" shape-artist-guide-clear-all)
-           ("S" "Guide snap" shape-artist-snap-toggle)
-           ("s" "Grid snap" shape-artist-grid-snap-toggle)
-           ("G" "Grid on/off" shape-artist-grid-toggle)
-           ("A" "Adopt selection" shape-artist-guide-adopt-selection-nearest)
-           ("R" "Reset adoptions" shape-artist-guide-clear-adoptions)
-           ("E" "Edit props" shape-artist-guide-edit-properties)
-           ("L" "Set label" shape-artist-guide-set-label)
-           ("P" "Snap distance" shape-artist-guide-set-snap-distance)
-           ("X" "Guide visible" shape-artist-guide-toggle-nearest-visibility)
-           ("W" "Save guides" shape-artist-guides-save)
-           ("O" "Load guides" shape-artist-guides-load)
-           ("U" "Undo guide" shape-artist-guides-undo)
-           ("Y" "Redo guide" shape-artist-guides-redo)]
-          ["Move / Draw"
-           ("SPC" "Draw from cursor" shape-artist-enter-draw-and-anchor)
-           ("d" "Enter draw" shape-artist-enter-draw)
-           ("p" "Pick draw char" shape-artist-pick-tool)
-           ("RET" "Commit" shape-artist-commit-and-exit)]
-          ["Select / Edit"
-           ("n" "Next candidate" shape-artist-select-next)
-           ("t" "Toggle candidate" shape-artist-select-toggle-current)
-           ("T" "Select all" shape-artist-select-all)
-           ("e" "Edit label" shape-artist-shape-edit-label)
-           ("x" "Cycle style" shape-artist-shape-cycle-style)]]))
-      (setq shape-artist--ui-transient-defined t))
-    (fboundp 'shape-artist-ui-transient)))
-
 (defun shape-artist-ui-command-menu ()
-  "Show the Shape Artist command menu.
-
-Use Transient when it is available and `shape-artist-ui-use-transient' is
-non-nil.  Otherwise use the dependency-free `completing-read' menu."
+  "Show the dependency-free, mode-sensitive Shape Artist command menu."
   (interactive)
-  (if (and shape-artist-ui-use-transient
-           (shape-artist-ui--ensure-transient))
-      (call-interactively 'shape-artist-ui-transient)
-    (shape-artist-ui-completing-read-menu)))
+  (shape-artist-ui-completing-read-menu))
 
 (defun shape-artist--ui-locked-shape-section ()
   "Generate locked shape details section (for SHAPE-EDIT mode)."

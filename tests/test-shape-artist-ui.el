@@ -179,6 +179,17 @@
         (should (string-match-p "Size: 4x2" text))
         (should (string-match-p "Shapes: 1" text))))))
 
+(ert-deftest test-shape-artist-ui-layout-section-includes-graph-health ()
+  "Sidebar layout reports graph nodes, connections, and components."
+  (test-artist-with-buffer
+      "+--+---+--+\n|  |   |  |\n+--+   +--+"
+    (let ((shape-artist--update-sidebar-fn nil))
+      (shape-artist-shapes-parse)
+      (let ((text (shape-artist--ui-layout-section)))
+        (should (string-match-p "Graph:" text))
+        (should (string-match-p "nodes" text))
+        (should (string-match-p "components" text))))))
+
 (ert-deftest test-shape-artist-ui-center-diagram-moves-point ()
   "Centering a parsed diagram moves point to its geometric center."
   (test-artist-with-buffer
