@@ -450,4 +450,116 @@
     (should-not (shape-artist--update-sidebar))
     (should-not (get-buffer "*artist-sidebar:does-not-exist*"))))
 
+;;; --- Sidebar Toggle, Menu, and Outline Tests ---
+
+(defmacro test-shape-artist-ui--with-sidebar-cleanup (&rest body)
+  "Run BODY, then delete any sidebar window and buffers it created."
+  (declare (indent 0))
+  `(save-window-excursion
+     (unwind-protect
+         (progn ,@body)
+       (dolist (buf (buffer-list))
+         (when (string-prefix-p "*artist-sidebar:" (buffer-name buf))
+           (kill-buffer buf))))))
+
+(ert-deftest test-shape-artist-ui-toggle-shows-then-hides-sidebar ()
+  "Toggling creates and displays the sidebar, then hides its window."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+      (shape-artist-shapes-parse)
+      (shape-artist-ui-toggle)
+      (let ((sidebar (get-buffer shape-artist--sidebar-buffer-name)))
+        (should (buffer-live-p sidebar))
+        (should (get-buffer-window sidebar))
+        (should (window-live-p shape-artist--sidebar-window))
+        (shape-artist-ui-toggle)
+        (should-not (get-buffer-window sidebar))
+        (should-not shape-artist--sidebar-window)))))
+
+(ert-deftest test-shape-artist-ui-show-fills-sidebar-content ()
+  "Showing the sidebar immediately renders the current diagram state."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+      (setq shape-artist--mode 'move)
+      (shape-artist-shapes-parse)
+      (shape-artist-ui-show)
+      (with-current-buffer shape-artist--sidebar-buffer-name
+        (should (string-match-p "=== Shape Tree ===" (buffer-string)))
+        (should (string-match-p "rect#" (buffer-string)))))))
+
+(ert-deftest test-shape-artist-ui-completing-read-menu-runs-chosen-action ()
+  "The quick-action menu runs the command whose label was chosen."
+  (test-artist-with-ui-buffer "abc"
+    (setq shape-artist--mode 'move)
+    (let ((ran nil)
+          (offered nil))
+      (cl-letf (((symbol-function 'shape-artist-ui-center-diagram)
+                 (lambda () (interactive) (setq ran t)))
+                ((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _)
+                   (setq offered (mapcar #'car choices))
+                   (car (cl-find-if (lambda (choice)
+                                      (string-match-p "Center diagram" (car choice)))
+                                    choices)))))
+        (shape-artist-ui-completing-read-menu))
+      (should ran)
+      (should (cl-find-if (lambda (label) (string-match-p "Start drawing" label)) offered)))))
+
+(ert-deftest test-shape-artist-ui-quick-actions-are-mode-specific ()
+  "Only actions valid in the active mode, plus the global ones, are offered."
+  (test-artist-with-ui-buffer "abc"
+    (let ((labels-for
+           (lambda (mode)
+             (setq shape-artist--mode mode)
+             (mapcar (lambda (action) (nth 2 action)) (shape-artist--ui-quick-actions)))))
+      (let ((move (funcall labels-for 'move))
+            (select (funcall labels-for 'select))
+            (edit (funcall labels-for 'shape-edit)))
+        (dolist (labels (list move select edit))
+          (should (member "Center diagram" labels)))
+        (should (member "Start drawing from cursor" move))
+        (should-not (member "Start drawing from cursor" select))
+        (should (member "Select all candidates" select))
+        (should-not (member "Select all candidates" edit))
+        (should (member "Prompt resize" edit))))))
+
+(ert-deftest test-shape-artist-ui-command-menu-delegates-to-completing-read ()
+  "The public command menu is the completing-read menu."
+  (let ((called 0))
+    (cl-letf (((symbol-function 'shape-artist-ui-completing-read-menu)
+               (lambda () (setq called (1+ called)))))
+      (shape-artist-ui-command-menu))
+    (should (= called 1))))
+
+(ert-deftest test-shape-artist-ui-show-outline-builds-tree-buffer ()
+  "Showing the outline renders the parsed shape tree in its own buffer."
+  (save-window-excursion
+    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+      (shape-artist-shapes-parse)
+      (unwind-protect
+          (progn
+            (shape-artist-ui-show-outline)
+            (let ((outline (get-buffer shape-artist-diagram--outline-buffer-name)))
+              (should (buffer-live-p outline))
+              (with-current-buffer outline
+                (should (derived-mode-p 'shape-artist-diagram-outline-mode))
+                (should (string-match-p "\\[rect (0,0) 3x2\\]" (buffer-string))))))
+        (when (get-buffer shape-artist-diagram--outline-buffer-name)
+          (kill-buffer shape-artist-diagram--outline-buffer-name))))))
+
+(ert-deftest test-shape-artist-ui-locked-shape-section-names-each-shape-type ()
+  "The locked-shape section reports the type of rectangles, edges, and labels."
+  (dolist (case '(("+----+\n| ab |\n+----+" shape-artist-diagram-rectangle-p "Type: rectangle")
+                  ("+----+\n| ab |\n+----+" shape-artist-diagram-label-p "Type: label")
+                  ("---" shape-artist-diagram-edge-p "Type: edge")))
+    (pcase-let ((`(,content ,predicate ,expected) case))
+      (ert-info (expected)
+        (test-artist-with-ui-buffer content
+          (shape-artist-shapes-parse)
+          (setq shape-artist--mode 'shape-edit)
+          (setq shape-artist--locked-shape
+                (cl-find-if predicate shape-artist--last-shapes-list))
+          (should (string-match-p (regexp-quote expected)
+                                  (shape-artist--ui-locked-shape-section))))))))
+
 ;;; test-shape-artist-ui.el ends here
