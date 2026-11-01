@@ -364,5 +364,246 @@
       "abc"
     (should-error (shape-artist-guides-save) :type 'user-error)))
 
+
+;;; --- Guide Command Tests ---
+
+(defmacro test-shape-artist-guides--capturing-messages (&rest body)
+  "Run BODY, returning the `message' strings it produced, oldest first."
+  (declare (indent 0))
+  `(let ((captured nil))
+     (cl-letf (((symbol-function 'message)
+                (lambda (fmt &rest args)
+                  (when fmt (push (apply #'format fmt args) captured)))))
+       ,@body)
+     (nreverse captured)))
+
+(defun test-shape-artist-guides--guide-ids ()
+  "Return the sorted ids of all guides in the current buffer."
+  (sort (mapcar #'shape-artist-guide-id shape-artist-guides--guides) #'<))
+
+(ert-deftest test-shape-artist-guides-delete-nearest-prefers-closer-guide ()
+  "Deleting the nearest guide removes the closer of the two orientations."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let ((row-guide (shape-artist-guides-add 'horizontal 2 nil 'manual))
+          (col-guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      ;; Point at row 0, column 1: row guide is 2 away, column guide is 1 away.
+      (shape-artist--goto-row-col 0 1)
+      (should (equal (test-shape-artist-guides--capturing-messages
+                       (shape-artist-guide-delete-nearest))
+                     (list (format "Deleted guide %d"
+                                   (shape-artist-guide-id col-guide)))))
+      (should (equal (test-shape-artist-guides--guide-ids)
+                     (list (shape-artist-guide-id row-guide)))))))
+
+(ert-deftest test-shape-artist-guides-delete-nearest-tie-prefers-horizontal ()
+  "When both orientations are equally close the horizontal guide is deleted."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let ((row-guide (shape-artist-guides-add 'horizontal 1 nil 'manual))
+          (col-guide (shape-artist-guides-add 'vertical 1 nil 'manual)))
+      (shape-artist--goto-row-col 0 0)
+      (shape-artist-guide-delete-nearest)
+      (should (equal (test-shape-artist-guides--guide-ids)
+                     (list (shape-artist-guide-id col-guide))))
+      (should-not (shape-artist-guides--guide-at-id
+                   (shape-artist-guide-id row-guide))))))
+
+(ert-deftest test-shape-artist-guides-delete-nearest-without-guides ()
+  "Deleting the nearest guide with no guides reports it and changes nothing."
+  (test-artist-with-guides-buffer
+      "abc"
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-delete-nearest))
+                   '("No guides to delete")))
+    (should-not shape-artist-guides--guides)))
+
+(ert-deftest test-shape-artist-guides-adopt-selection-nearest-adopts-and-undoes ()
+  "Adopting a locked shape into the nearest guide is recorded for undo."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let* ((rect (test-shape-artist-guides--first-rect))
+           (guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      (setq shape-artist--locked-shape rect)
+      (shape-artist--goto-row-col 1 0)
+      (should (equal (test-shape-artist-guides--capturing-messages
+                       (shape-artist-guide-adopt-selection-nearest))
+                     (list (format "Guide %d adopted 1 shape(s)"
+                                   (shape-artist-guide-id guide)))))
+      (should (= (length (shape-artist-guide-adopted-shape-signatures guide)) 1))
+      (shape-artist-guides-undo)
+      (should-not (shape-artist-guide-adopted-shape-signatures
+                   (shape-artist-guides--guide-at-id
+                    (shape-artist-guide-id guide)))))))
+
+(ert-deftest test-shape-artist-guides-adopt-selection-nearest-explicit-id ()
+  "An explicit guide id wins over the guide nearest to point."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let ((near (shape-artist-guides-add 'vertical 0 nil 'manual))
+          (far (shape-artist-guides-add 'vertical 4 nil 'manual)))
+      (setq shape-artist--locked-shape (test-shape-artist-guides--first-rect))
+      (shape-artist--goto-row-col 1 0)
+      (shape-artist-guide-adopt-selection-nearest (shape-artist-guide-id far))
+      (should (= (length (shape-artist-guide-adopted-shape-signatures far)) 1))
+      (should-not (shape-artist-guide-adopted-shape-signatures near)))))
+
+(ert-deftest test-shape-artist-guides-adopt-selection-nearest-reports-nothing-to-do ()
+  "Adopting reports a missing guide or a missing selection and changes nothing."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    ;; No guide at all.
+    (setq shape-artist--locked-shape (test-shape-artist-guides--first-rect))
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-adopt-selection-nearest))
+                   '("No guide to adopt into")))
+    ;; A guide, but nothing selected or locked.
+    (let ((guide (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      (setq shape-artist--locked-shape nil)
+      (should (equal (test-shape-artist-guides--capturing-messages
+                       (shape-artist-guide-adopt-selection-nearest))
+                     '("No selected or locked shapes to adopt")))
+      (should-not (shape-artist-guide-adopted-shape-signatures guide)))))
+
+(ert-deftest test-shape-artist-guides-select-guide-by-id-or-prompt ()
+  "Guide selection honors an id, prompts otherwise, and never prompts when empty."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((prompted 0))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (&rest _) (setq prompted (1+ prompted)) "unreachable")))
+        ;; No guides: nothing to choose from, so no prompt.
+        (should-not (shape-artist-guides--select-guide nil "Pick: "))
+        (should (= prompted 0)))
+      (let ((a (shape-artist-guides-add 'vertical 1 "left" 'manual))
+            (b (shape-artist-guides-add 'horizontal 2 "top" 'manual)))
+        (should (eq (shape-artist-guides--select-guide
+                     (shape-artist-guide-id a) "Pick: ")
+                    a))
+        (cl-letf (((symbol-function 'completing-read)
+                   (lambda (_prompt choices &rest _)
+                     ;; Choices are labelled "ID ORIENTATION POSITION LABEL".
+                     (should (member (format "%d horizontal 2 top"
+                                             (shape-artist-guide-id b))
+                                     (mapcar #'car choices)))
+                     (format "%d horizontal 2 top" (shape-artist-guide-id b)))))
+          (should (eq (shape-artist-guides--select-guide nil "Pick: ") b)))))))
+
+(ert-deftest test-shape-artist-guides-set-snap-distance-prompts-and-validates ()
+  "Snap distance can be set, cleared back to default, and rejects negatives."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 nil 'manual))
+          (answer "4"))
+      (cl-letf (((symbol-function 'read-string)
+                 (lambda (&rest _) answer)))
+        (shape-artist-guide-set-snap-distance (shape-artist-guide-id guide))
+        (should (= (shape-artist-guide-snap-distance guide) 4))
+        ;; An empty answer clears the per-guide override.
+        (setq answer "")
+        (shape-artist-guide-set-snap-distance (shape-artist-guide-id guide))
+        (should-not (shape-artist-guide-snap-distance guide)))
+      ;; Negative distances are rejected before anything changes.
+      (should-error (shape-artist-guide-set-snap-distance
+                     (shape-artist-guide-id guide) -1)
+                    :type 'user-error)
+      (should-not (shape-artist-guide-snap-distance guide)))))
+
+(ert-deftest test-shape-artist-guides-set-snap-distance-without-guides ()
+  "Setting a snap distance with no guides reports that nothing is selected."
+  (test-artist-with-guides-buffer
+      "abc"
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-set-snap-distance))
+                   '("No guide selected")))))
+
+(ert-deftest test-shape-artist-guides-edit-properties-applies-all-fields ()
+  "Editing properties updates position, label, visibility, and snap distance."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 "old" 'manual)))
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 5))
+                ((symbol-function 'read-string)
+                 (let ((answers (list "new" "3")))
+                   (lambda (&rest _) (pop answers))))
+                ((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+        (shape-artist-guide-edit-properties (shape-artist-guide-id guide)))
+      (should (= (shape-artist-guide-position guide) 5))
+      (should (equal (shape-artist-guide-label guide) "new"))
+      (should-not (shape-artist-guide-visible guide))
+      (should (= (shape-artist-guide-snap-distance guide) 3)))))
+
+(ert-deftest test-shape-artist-guides-edit-properties-clears-and-clamps ()
+  "Empty label/snap answers clear those fields and positions clamp at zero."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 "old" 'manual)))
+      (setf (shape-artist-guide-snap-distance guide) 9)
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) -4))
+                ((symbol-function 'read-string) (lambda (&rest _) ""))
+                ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+        (shape-artist-guide-edit-properties (shape-artist-guide-id guide)))
+      (should (= (shape-artist-guide-position guide) 0))
+      (should-not (shape-artist-guide-label guide))
+      (should (shape-artist-guide-visible guide))
+      (should-not (shape-artist-guide-snap-distance guide)))))
+
+(ert-deftest test-shape-artist-guides-edit-properties-rejects-negative-snap ()
+  "A negative snap override aborts the edit without changing the guide."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 "keep" 'manual)))
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 7))
+                ((symbol-function 'read-string)
+                 (let ((answers (list "changed" "-2")))
+                   (lambda (&rest _) (pop answers))))
+                ((symbol-function 'y-or-n-p) (lambda (&rest _) nil)))
+        (should-error (shape-artist-guide-edit-properties
+                       (shape-artist-guide-id guide))
+                      :type 'user-error))
+      (should (= (shape-artist-guide-position guide) 2))
+      (should (equal (shape-artist-guide-label guide) "keep"))
+      (should (shape-artist-guide-visible guide)))))
+
+(ert-deftest test-shape-artist-guides-move-interactive-prompts-for-guide-and-position ()
+  "Without arguments, moving a guide prompts for the guide and its position."
+  (test-artist-with-guides-buffer
+      "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 "main" 'manual)))
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt choices &rest _) (car (car choices))))
+                ((symbol-function 'read-number) (lambda (&rest _) 6)))
+        (shape-artist-guide-move))
+      (should (= (shape-artist-guide-position guide) 6)))))
+
+(ert-deftest test-shape-artist-guides-move-clamps-to-zero-and-handles-no-guide ()
+  "Guides never move below zero, and moving with no guide reports it."
+  (test-artist-with-guides-buffer
+      "abc"
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (cl-letf (((symbol-function 'completing-read)
+                                (lambda (&rest _) "")))
+                       (shape-artist-guide-move)))
+                   '("No guide selected")))
+    (let ((guide (shape-artist-guides-add 'vertical 2 nil 'manual)))
+      (shape-artist-guide-move (shape-artist-guide-id guide) -5)
+      (should (= (shape-artist-guide-position guide) 0)))))
+
+(ert-deftest test-shape-artist-guides-toggle-visibility-uses-nearest-guide ()
+  "Toggling visibility without an id acts on the guide nearest to point."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-toggle-nearest-visibility))
+                   '("No guide selected")))
+    (let ((near (shape-artist-guides-add 'vertical 0 nil 'manual))
+          (far (shape-artist-guides-add 'vertical 4 nil 'manual)))
+      (shape-artist--goto-row-col 1 0)
+      (shape-artist-guide-toggle-nearest-visibility)
+      (should-not (shape-artist-guide-visible near))
+      (should (shape-artist-guide-visible far))
+      (shape-artist-guide-toggle-nearest-visibility)
+      (should (shape-artist-guide-visible near)))))
+
 (provide 'test-shape-artist-guides)
 ;;; test-shape-artist-guides.el ends here
