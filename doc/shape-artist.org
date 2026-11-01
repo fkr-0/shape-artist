@@ -8,7 +8,7 @@
 :COPYING: t
 :END:
 
-This manual is for Shape Artist version 0.2.1.
+This manual is for Shape Artist version 0.3.0.
 
 Copyright \copy 2024-2026 Shape Artist Contributors
 
@@ -48,6 +48,15 @@ It works without Evil as well, using standard Emacs keybindings.
   cursor forms, SELECT candidate/selection overlays, and SHAPE-EDIT target
   highlighting all follow one central transition contract.
 - *Outline buffer*: Tree view of the detected shape hierarchy.
+- *In-place editing*: Edit a diagram where it lives, in a source comment, an
+  Org or Markdown block, or indented text, without taking over the buffer.
+- *Mouse*: Select, drag, resize by corner handles, draw by dragging, with a
+  ghost preview and a context menu.
+- *Help and tutorial*: A mode-aware key hint, a grouped command palette, a
+  generated cheat sheet, an Artist menu, and an interactive tutorial.
+- *Diagnose and export*: Explain and repair boxes the parser rejects, and
+  export to Mermaid, Graphviz DOT, or SVG.
+- *One undo*: Guide changes join ordinary Emacs undo.
 
 * Installation
 
@@ -81,6 +90,10 @@ Shape Artist can be installed via =package-install= from MELPA
 4. Press =SPC= to set an anchor, then move to draw a rectangle.
 5. Press =RET= to commit the shape and return to MOVE mode.
 6. Press =C-n= to enter SELECT mode and cycle through detected shapes.
+7. Press =?= for the key hints (press it again for the full command palette),
+   or run =M-x shape-artist-tutorial= for a guided practice session.
+8. To edit a diagram that is already in a file, put point on it and run
+   =M-x shape-artist-edit-at-point= (see [[*In-place Editing]]).
 
 * Modes
 
@@ -274,6 +287,89 @@ Remaining larger design areas are explicit future work rather than hidden stubs:
 
 See =docs/feature-roadmap.md= for the algorithm and release roadmap.
 
+* In-place Editing
+
+Diagrams usually live inside other text.  =M-x shape-artist-edit-at-point= finds
+the diagram around point, opens it in a separate editing buffer with its comment
+prefix or indentation removed, and writes it back when you press =C-c C-c=.
+=C-c C-k= discards the session.  Everything outside the diagram lines stays
+byte-identical, the write-back is one undo step in the source buffer, and if the
+source changed while you were editing you are asked before it is overwritten.
+
+Recognised homes for a diagram:
+
+- runs of comment lines (=;;=, =//=, =#=, =--=, =%=, =*=, =>=, and Org's =:=),
+  with or without indentation;
+- Markdown code fences and Org example and source blocks, including indented
+  ones;
+- indented blocks of plain text.
+
+In comments and plain text only diagram-looking lines are taken, so adjacent
+prose is left alone.  To edit exactly some lines, select them first: an active
+region always wins.  Blank rows and columns the canvas gained while you drew
+are trimmed when the diagram is written back.
+
+=M-x shape-artist-insert-diagram= starts a new diagram below the current line,
+in the same comment style; nothing is inserted unless you draw something.
+These commands have no default key binding, so bind them where you like:
+
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-c d") #'shape-artist-edit-at-point)
+(global-set-key (kbd "C-c D") #'shape-artist-insert-diagram)
+#+end_src
+
+* Mouse
+
+With a pointer (a graphical Emacs, or a terminal with =xterm-mouse-mode=):
+
+| Action                         | Result                                          |
+|--------------------------------+-------------------------------------------------|
+| Press a shape                  | Select it for editing (SHAPE-EDIT)              |
+| Drag a selected shape          | Move it; a ghost outline follows the pointer    |
+| Drag a corner handle           | Resize from the opposite corner                 |
+| Drag across blank canvas       | Draw a box (a straight drag draws a line)       |
+| Click blank canvas             | Deselect and place the cursor                   |
+| Shift-press                    | Add or remove a shape from a group selection    |
+| Drag a member of a group       | Move the whole group                            |
+| Double-press a box             | Edit its label                                  |
+| Right-press                    | Context menu for the shape (or the diagram)     |
+
+The buffer changes only when you release the button, and a whole drag is one
+undo step.  The sidebar is a navigator too: =RET= or a click on a shape row
+selects that shape in the diagram.
+
+* Help and Learning
+
+- =?= shows a one-line, mode-aware key hint; pressing it again opens the
+  command palette, grouped and annotated with live keys.
+- =M-x shape-artist-help-cheatsheet= shows every key of every mode, generated
+  from the keymaps.
+- The Artist menu in the menu bar lists the main commands.
+- =M-x shape-artist-tutorial= opens a practice canvas with a live checklist:
+  draw a box, label it, add a second, connect them, move one, restyle one, and
+  undo.  Progress is remembered, and a one-time pointer to the tutorial is shown
+  the first time you open =shape-artist-scratch=.
+
+* Diagnosing and Exporting
+
+Press =E= (then a letter) or use the Artist menu:
+
+| Keys  | Command                        | What it does                            |
+|-------+--------------------------------+-----------------------------------------|
+| =E e= | =shape-artist-explain-at-point= | Says why a box is not detected          |
+| =E r= | =shape-artist-repair-at-point= | Fixes the near-miss box at point        |
+| =E R= | =shape-artist-repair-all=      | Fixes every near-miss box               |
+| =E x= | =shape-artist-export=          | Exports as Mermaid, DOT, or SVG         |
+
+A near-miss is a box the parser rejects on purpose: a mixed border family
+(=+---+= over =+===+=), a gap in a border, a missing corner or side character, or
+a ragged edge.  Only blanks and another family's border glyphs count as defects,
+and repairs are limited to =shape-artist-explain-max-edits= cell changes, so
+ordinary text is never reported.
+
+Export labels each box with the text inside it, and draws a connector between
+boxes as an edge, with the direction taken from its arrowheads.
+
 * Normalization
 
 =M-x shape-artist-normalize= trims blank rows and columns, adds
@@ -289,6 +385,15 @@ can be customized via =shape-artist-default-padding=.
 
 - =shape-artist-default-padding=: Default padding for normalization.
   Type: =(list integer integer integer integer)=.
+- =shape-artist-default-style=: Border style DRAW uses for new rectangles
+  (=standard=, =heavy=, =light=, =rounded=, =unicode-single=,
+  =unicode-rounded=, or =unicode-double=).  Lines stay plain ASCII so they
+  remain parseable connectors.
+- =shape-artist-first-run-hint=: Show the one-time tutorial pointer.
+- =shape-artist-tutorial-progress-file=: Where tutorial progress is stored.
+- =shape-artist-explain-max-edits=: Largest repair, in cell edits, that
+  =shape-artist-explain-at-point= will propose.
+- =shape-artist-export-display-function=: How the export buffer is shown.
 
 ** Faces
 
@@ -300,6 +405,9 @@ can be customized via =shape-artist-default-padding=.
 - =shape-artist-select-current-face= and =shape-artist-select-marked-face=:
   current-candidate versus persistent-selection feedback.
 - =shape-artist-edit-target-face=: active SHAPE-EDIT object/group feedback.
+- =shape-artist-handle-face=: the corner resize handles of the selected box.
+- =shape-artist-ghost-face=: the preview outline shown while dragging.
+- =shape-artist-explain-face=: the highlight on a near-miss box.
 
 * Evil Integration
 
@@ -337,6 +445,12 @@ position in the artist buffer.
 - =shape-artist-diagram-parse.el=: EIEIO classes, detection,
   hierarchy.
 - =shape-artist-diagram-outline.el=: Outline buffer.
+- =shape-artist-embed.el=: In-place editing in any buffer.
+- =shape-artist-mouse.el=: Mouse support, hit-testing, and the drag preview.
+- =shape-artist-help.el=: Key hint, cheat sheet, command palette, key audit.
+- =shape-artist-tutorial.el=: Interactive tutorial and first-run hint.
+- =shape-artist-explain.el=: Near-miss detection and repair.
+- =shape-artist-export.el=: Mermaid, DOT, and SVG export.
 
 ** Shape model
 

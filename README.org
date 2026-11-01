@@ -21,6 +21,15 @@ making it easy to draw boxes, lines, and labels in plain text.
 - Explicit SELECT candidate/multi-selection and SHAPE-EDIT target highlighting
 - Sidebar UI with live shape, graph, and guide information
 - Buffer-local alignment guides, grid overlays, and guide snapping
+- *Edit diagrams in place* in source comments, Org and Markdown blocks, or
+  indented text, without taking over the buffer
+- *Mouse*: select, drag to move, corner handles to resize, drag to draw, a
+  ghost preview, and a context menu
+- *Learn in minutes*: a mode-aware key hint, a command palette, a generated
+  cheat sheet, an Artist menu, and an interactive tutorial
+- *Explain and repair* boxes the parser rejects, and *export* to Mermaid, DOT,
+  or SVG
+- One undo for everything, including guide changes
 
 * Installation
 
@@ -42,6 +51,23 @@ Add to your init file:
 #+begin_src emacs-lisp
 (add-to-list 'load-path "/path/to/shape-artist")
 (require 'shape-artist)
+#+end_src
+
+** From GitHub
+
+With Emacs 29 or later:
+
+#+begin_src emacs-lisp
+(package-vc-install "https://github.com/fkr-0/shape-artist")
+#+end_src
+
+or, with =use-package= and Emacs 30 or later:
+
+#+begin_src emacs-lisp
+(use-package shape-artist
+  :vc (:url "https://github.com/fkr-0/shape-artist")
+  :commands (shape-artist-scratch shape-artist-edit-at-point
+             shape-artist-insert-diagram shape-artist-tutorial))
 #+end_src
 
 ** Local development with straight.el / Doom Emacs
@@ -96,8 +122,44 @@ sidebar.  From there:
 6. =RET= in SELECT locks the shape for editing
 7. In SELECT, use =t= to mark multiple shapes or =T= to select all.
 8. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape or group, =>= / =<= to change width or edge length, =+= / =_= to change height or vertical edge length, =[= / =]= and ={= / =}= for left/top anchored resize, and =x= to cycle border or arrow style.
-9. Press =?= for the mode-aware quick action menu, =o= for the outline tree,
-   or =z= to center the parsed diagram.
+9. Press =?= for the mode-aware key hint (press it again for the full command
+   palette), =o= for the outline tree, or =z= to center the parsed diagram.
+   =u= always undoes, and =a= toggles the sidebar.
+
+** Editing a diagram where it lives
+
+Put point on a diagram inside a comment, an Org or Markdown block, or an
+indented text block and run =M-x shape-artist-edit-at-point=.  It opens in its
+own buffer with the comment prefix removed; =C-c C-c= writes it back (prefix
+restored, everything around it untouched, one undo step) and =C-c C-k= cancels.
+Select lines first to edit exactly those.  =M-x shape-artist-insert-diagram=
+starts a new diagram below the current line in the same comment style.  Bind
+them to keys you like:
+
+#+begin_src emacs-lisp
+(global-set-key (kbd "C-c d") #'shape-artist-edit-at-point)
+(global-set-key (kbd "C-c D") #'shape-artist-insert-diagram)
+#+end_src
+
+** Mouse
+
+Press a shape to select it and drag to move it (a ghost outline previews the
+result and the buffer changes on release).  Drag a corner handle of the
+selected box to resize it, drag across blank canvas to draw a box, shift-press to
+build a group, double-press a box to edit its label, and right-press for a
+context menu.  In a terminal, enable =xterm-mouse-mode=.  The sidebar is
+clickable too.
+
+** Learning and discovering
+
+Run =M-x shape-artist-tutorial= for a guided practice session with a live
+checklist, press =?= for key hints, or open the Artist menu.  =M-x
+shape-artist-help-cheatsheet= lists every key of every mode.
+
+** Diagnosing and exporting
+
+=E e= explains why a box is not detected, =E r= repairs it (=E R= repairs every
+near-miss), and =E x= exports the diagram as Mermaid, Graphviz DOT, or SVG.
 
 ** Modal UX and visual state
 

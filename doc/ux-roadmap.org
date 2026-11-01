@@ -6,6 +6,40 @@ Companion documents: =docs/feature-roadmap.md= and =future.yml= cover the
 /engine/ (operation protocol, layout, routing, indexing).  This file covers the
 /experience layer/ and says where it depends on the engine.
 
+* Delivery status (0.3.0)
+
+Phases A to D and the first part of F shipped in 0.3.0.  The friction table
+below describes the product as it was at 0.2.1; every item F1 to F13 except the
+last two is resolved (F12 is partly resolved by export, and F13 is only partly
+addressed by =shape-artist-default-style=).
+
+| ID    | Status   | Note                                                                 |
+|-------+----------+----------------------------------------------------------------------|
+| A1    | Done     | Idempotent enable; the previous major mode is restored on disable    |
+| A2    | Done     | Guide changes join Emacs undo; selection and mode are not recorded   |
+| A3    | Done     | =u= is undo everywhere; =a= toggles the sidebar                      |
+| A4    | Done     | Connectors keep a two-cell minimum                                   |
+| A5    | Done     | Errors name the cause, the value, and the remedy                     |
+| A6    | Done     | Seeded property tests for move, resize, restyle, and undo            |
+| A7    | Done     | All seven families selectable; =shape-artist-default-style=          |
+| B1/B2 | Done     | =shape-artist-edit-at-point= with comment-prefix handling            |
+| B3    | Partial  | Org and Markdown blocks work; no default =C-c '= binding             |
+| B4    | Done     | =shape-artist-insert-diagram=                                        |
+| B5    | Partial  | Whole-buffer mode still uses =picture-mode=, but now restores it     |
+| C1-C4 | Done     | Tutorial, palette, cheat sheet, first-run hint                       |
+| C5/C6 | Deferred | DRAW tool selection and key presets                                  |
+| D1    | Partial  | Ghost preview for mouse drags; keyboard edits still apply at once    |
+| D2/D3 | Done     | Corner handles and mouse support                                     |
+| D4    | Deferred | Typing a label inside the box                                        |
+| D5    | Done     | Clickable sidebar                                                    |
+| D6    | Deferred | Connect tool (needs routing)                                         |
+| E1-E5 | Open     | Align/distribute, auto-fit, presets, stencils, width audit           |
+| F1    | Done     | Explain and repair near-miss boxes                                   |
+| F2/F3 | Open     | Lint and auto-layout                                                 |
+| F4    | Partial  | Export to Mermaid, DOT, SVG; no import, PNG, or Org tables           |
+| F5/F6 | Open     | Semantic diff and a documented graph API                             |
+| G     | Partial  | Real package URL and CI; MELPA, docs site, and the rest are open     |
+
 * Thesis
 
 Developers do not need another drawing application.  They need the diagrams
