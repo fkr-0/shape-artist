@@ -3,7 +3,7 @@
 ;; Copyright (C) 2024-2026 Shape Artist Contributors
 
 ;; Author: Shape Artist Contributors
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: convenience, diagrams, art
 ;; URL: https://github.com/example/shape-artist

@@ -9,6 +9,16 @@ before the `0.2.0` work and was never tagged.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-01
+
+### Fixed
+
+- Disabling `shape-artist-core-mode` now restores the buffer's prior cursor
+  type, mode-line format, and `whitespace-style`. The saved state is
+  buffer-local, so enabling the mode in a second buffer no longer clobbers what
+  the first buffer restores, and `whitespace-style` is no longer left forced to
+  `(spaces space-mark)` after the mode is turned off.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added
