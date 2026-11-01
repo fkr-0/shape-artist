@@ -164,6 +164,15 @@
       (shape-artist-select-next)
       (should shape-artist--select-overlays))))
 
+(ert-deftest test-shape-artist-select-current-overlay-uses-mode-face ()
+  "The active SELECT candidate uses the dedicated high-salience face."
+  (test-artist-with-rect-buffer
+      "+---+\n|   |\n+---+"
+    (shape-artist-select-start)
+    (should shape-artist--select-overlays)
+    (should (eq (overlay-get (car shape-artist--select-overlays) 'face)
+                'shape-artist-select-current-face))))
+
 ;;; --- shapes-current Integration Tests ---
 
 (ert-deftest test-shape-artist-select-current-shape-match ()

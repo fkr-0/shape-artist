@@ -37,6 +37,17 @@
     (shape-artist-shape-edit-exit)
     (should-not shape-artist--locked-shape)))
 
+(ert-deftest test-shape-artist-shape-edit-target-overlay-is-explicit ()
+  "SHAPE-EDIT keeps a dedicated visual target overlay until exit."
+  (test-artist-with-locked-shape
+      "+---+\n|   |\n+---+"
+    (shape-artist-shape-edit-refresh-overlays)
+    (should shape-artist--edit-target-overlays)
+    (should (eq (overlay-get (car shape-artist--edit-target-overlays) 'face)
+                'shape-artist-edit-target-face))
+    (shape-artist-shape-edit-exit)
+    (should-not shape-artist--edit-target-overlays)))
+
 ;;; --- Interior Navigation Tests ---
 
 (ert-deftest test-shape-artist-shape-edit-up ()

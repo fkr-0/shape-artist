@@ -10,18 +10,34 @@
 (require 'shape-artist-core)
 (require 'shape-artist-shapes)
 
-(declare-function evil-normal-state "evil")
+(defvar-local shape-artist--edit-target-overlays nil
+  "Overlays identifying active SHAPE-EDIT targets.")
+
+(defun shape-artist-shape-edit-clear-overlays ()
+  "Remove active SHAPE-EDIT target overlays."
+  (mapc #'delete-overlay shape-artist--edit-target-overlays)
+  (setq shape-artist--edit-target-overlays nil))
+
+(defun shape-artist-shape-edit-refresh-overlays ()
+  "Refresh strong visual indicators for active edit targets."
+  (shape-artist-shape-edit-clear-overlays)
+  (when (eq shape-artist--mode 'shape-edit)
+    (let ((targets (or (shape-artist-shapes-selected)
+                       (and shape-artist--locked-shape
+                            (list shape-artist--locked-shape)))))
+      (dolist (shape targets)
+        (setq shape-artist--edit-target-overlays
+              (append (shape-artist-diagram--highlight-shape
+                       shape 'shape-artist-edit-target-face)
+                      shape-artist--edit-target-overlays))))))
 
 (defun shape-artist-shape-edit-exit ()
   "Exit SHAPE-EDIT mode, clear locks, and return to MOVE."
   (interactive)
+  (shape-artist-shape-edit-clear-overlays)
   (setq shape-artist--locked-shape nil)
   (setq shape-artist--selected-shape-signatures nil)
-  (setq shape-artist--mode 'move)
-  (when (fboundp 'evil-normal-state)
-    (evil-normal-state))
-  (shape-artist--update-mode-line)
-  (shape-artist--maybe-update-sidebar))
+  (shape-artist--enter-mode 'move))
 
 (defun shape-artist-shape-edit--count (count)
   "Normalize interactive COUNT to a positive integer."
@@ -41,6 +57,7 @@
     (when shape-artist--selected-shape-signatures
       (setq shape-artist--selected-shape-signatures
             (mapcar #'shape-artist-shapes-signature shapes)))
+    (shape-artist-shape-edit-refresh-overlays)
     (shape-artist--maybe-update-sidebar)
     (car shapes)))
 

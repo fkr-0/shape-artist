@@ -109,9 +109,76 @@ package still byte-compiles cleanly when Evil is not loaded during build."
   "Stable signatures of selected shapes for grouped SHAPE-EDIT operations.")
 
 (defface shape-artist-preview-face
-  '((t :background "#ffff66"))
+  '((t :inherit highlight :extend t))
   "Face for shape preview overlays."
   :group 'shape-artist)
+
+(defface shape-artist-mode-move-face
+  '((t :inherit success :weight bold))
+  "Face for MOVE mode indicators."
+  :group 'shape-artist)
+
+(defface shape-artist-mode-draw-face
+  '((t :inherit error :weight bold))
+  "Face for DRAW mode indicators."
+  :group 'shape-artist)
+
+(defface shape-artist-mode-select-face
+  '((t :inherit warning :weight bold))
+  "Face for SELECT mode indicators."
+  :group 'shape-artist)
+
+(defface shape-artist-mode-edit-face
+  '((t :inherit font-lock-keyword-face :weight bold))
+  "Face for SHAPE-EDIT mode indicators."
+  :group 'shape-artist)
+
+(defface shape-artist-select-current-face
+  '((t :inherit highlight :weight bold :extend t))
+  "Face for the current SELECT candidate."
+  :group 'shape-artist)
+
+(defface shape-artist-select-marked-face
+  '((t :inherit secondary-selection :weight semi-bold :extend t))
+  "Face for shapes retained in a multi-selection."
+  :group 'shape-artist)
+
+(defface shape-artist-edit-target-face
+  '((t :inherit region :weight bold :inverse-video t :extend t))
+  "Face for the active SHAPE-EDIT target or group."
+  :group 'shape-artist)
+
+(defconst shape-artist--mode-specs
+  '((move
+     :label "MOVE"
+     :activity "NAVIGATE"
+     :face shape-artist-mode-move-face
+     :cursor box
+     :hint "h/j/k/l move · SPC draw · C-n select · ? actions")
+    (draw
+     :label "DRAW"
+     :activity "CREATE"
+     :face shape-artist-mode-draw-face
+     :cursor (hbar . 3)
+     :hint "h/j/k/l draw · SPC anchor · RET commit · ESC cancel")
+    (select
+     :label "SELECT"
+     :activity "PICK"
+     :face shape-artist-mode-select-face
+     :cursor hollow
+     :hint "n/p candidate · t mark · RET edit · ESC cancel")
+    (shape-edit
+     :label "EDIT"
+     :activity "TRANSFORM"
+     :face shape-artist-mode-edit-face
+     :cursor box
+     :hint "H/J/K/L move · </> +/- resize · x style · ESC finish"))
+  "Single source of truth for Shape Artist modal presentation.")
+
+(defvar shape-artist-mode-changed-hook nil
+  "Hook run after a Shape Artist mode transition.
+
+Hook functions receive OLD-MODE and NEW-MODE as arguments.")
 
 (defvar-local shape-artist--mode-line-segment ""
   "Mode-line segment string.")
@@ -119,6 +186,50 @@ package still byte-compiles cleanly when Evil is not loaded during build."
 (defconst shape-artist--mode-line-form
   '(:eval (shape-artist--mode-line-segment-fn))
   "Mode-line form appended while `shape-artist-core-mode' is active.")
+
+(defconst shape-artist--header-line-form
+  '(:eval (shape-artist--header-line-segment-fn))
+  "Header-line form displayed while `shape-artist-core-mode' is active.")
+
+(defun shape-artist--mode-spec (&optional mode)
+  "Return presentation specification for MODE or the current mode."
+  (cdr (assq (or mode shape-artist--mode) shape-artist--mode-specs)))
+
+(defun shape-artist--mode-property (property &optional mode)
+  "Return PROPERTY from MODE's presentation specification."
+  (plist-get (shape-artist--mode-spec mode) property))
+
+(defun shape-artist--sync-evil-state (mode)
+  "Synchronize optional Evil state with Shape Artist MODE."
+  (cond
+   ((eq mode 'move)
+    (when (fboundp 'evil-normal-state)
+      (evil-normal-state)))
+   ((fboundp 'evil-change-state)
+    (evil-change-state
+     (pcase mode
+       ('draw 'artist)
+       ('select 'select)
+       ('shape-edit 'shape-edit))))))
+
+(defun shape-artist--enter-mode (mode &optional skip-evil)
+  "Enter MODE and synchronize all visual state.
+
+When SKIP-EVIL is non-nil, do not request an Evil state transition."
+  (unless (assq mode shape-artist--mode-specs)
+    (user-error "Unknown Shape Artist mode: %S" mode))
+  (let ((old-mode shape-artist--mode))
+    (setq shape-artist--mode mode)
+    ;; Let optional Evil update its state first, then re-assert the Shape Artist
+    ;; presentation contract so Evil cursor defaults cannot override mode cues.
+    (unless skip-evil
+      (shape-artist--sync-evil-state mode))
+    (setq-local cursor-type (shape-artist--mode-property :cursor mode))
+    (shape-artist--update-mode-line)
+    (force-mode-line-update t)
+    (shape-artist--maybe-update-sidebar)
+    (unless (eq old-mode mode)
+      (run-hook-with-args 'shape-artist-mode-changed-hook old-mode mode))))
 
 ;;; --- Grid Helpers ---
 
@@ -381,11 +492,7 @@ package still byte-compiles cleanly when Evil is not loaded during build."
 (defun shape-artist-enter-draw ()
   "Enter DRAW mode (no anchor)."
   (interactive)
-  (setq shape-artist--mode 'draw)
-  (when (fboundp 'evil-artist-state)
-    (evil-artist-state))
-  (shape-artist--update-mode-line)
-  (shape-artist--maybe-update-sidebar))
+  (shape-artist--enter-mode 'draw))
 
 (defun shape-artist--clear-preview-state ()
   "Clear all preview overlays and anchor."
@@ -510,11 +617,7 @@ package still byte-compiles cleanly when Evil is not loaded during build."
 (defun shape-artist-enter-move ()
   "Enter MOVE mode."
   (interactive)
-  (setq shape-artist--mode 'move)
-  (when (fboundp 'evil-normal-state)
-    (evil-normal-state))
-  (shape-artist--update-mode-line)
-  (shape-artist--maybe-update-sidebar))
+  (shape-artist--enter-mode 'move))
 
 ;;; --- Normalization ---
 
@@ -663,12 +766,23 @@ TITLE is a string or nil.  When nil, skip the box."
 
 (defun shape-artist--mode-line-segment-fn ()
   "Return the mode-line segment string based on current mode."
-  (pcase shape-artist--mode
-    ('move    (propertize " ART-MOVE " 'face '(:background "#44aa44" :foreground "white")))
-    ('draw    (propertize " ART-DRAW " 'face '(:background "#cc4444" :foreground "white")))
-    ('select  (propertize " ART-SELECT " 'face '(:background "#cccc44" :foreground "black")))
-    ('shape-edit (propertize " ART-EDIT " 'face '(:background "#4444cc" :foreground "white")))
-    (_ "")))
+  (let ((label (shape-artist--mode-property :label))
+        (face (shape-artist--mode-property :face)))
+    (if label
+        (propertize (format " SA:%s " label) 'face face)
+      "")))
+
+(defun shape-artist--header-line-segment-fn ()
+  "Return a prominent mode badge and concise context hint."
+  (let ((label (shape-artist--mode-property :label))
+        (activity (shape-artist--mode-property :activity))
+        (face (shape-artist--mode-property :face))
+        (hint (shape-artist--mode-property :hint)))
+    (if label
+        (concat
+         (propertize (format " %s · %s " label activity) 'face face)
+         (propertize (format "  %s" hint) 'face 'shadow))
+      "")))
 
 (defun shape-artist--update-mode-line ()
   "Update the mode-line segment based on current mode."
@@ -716,6 +830,9 @@ TITLE is a string or nil.  When nil, skip the box."
 (defvar shape-artist--saved-mode-line-format nil
   "Saved mode-line format before entering artist mode.")
 
+(defvar-local shape-artist--saved-header-line-format nil
+  "Saved header-line format before entering artist mode.")
+
 (defvar shape-artist--saved-whitespace-style nil
   "Saved whitespace style before entering artist mode.")
 
@@ -746,8 +863,7 @@ TITLE is a string or nil.  When nil, skip the box."
   ;; Save state (after picture-mode has run)
   (setq shape-artist--saved-cursor-type cursor-type)
   (setq shape-artist--saved-mode-line-format mode-line-format)
-  ;; Set buffer-local cursor
-  (setq cursor-type 'box)
+  (setq shape-artist--saved-header-line-format header-line-format)
   ;; Enable whitespace visualization
   (setq-local whitespace-space 'whitespace-space)
   (setq-local whitespace-style '(spaces space-mark))
@@ -756,9 +872,13 @@ TITLE is a string or nil.  When nil, skip the box."
   (unless (member shape-artist--mode-line-form mode-line-format)
     (setq mode-line-format
           (append mode-line-format (list shape-artist--mode-line-form))))
-  ;; Set initial mode
-  (setq shape-artist--mode 'move)
-  (shape-artist--update-mode-line)
+  ;; Give the active editing context a stable, always-visible visual anchor.
+  (setq-local header-line-format
+              (append (list shape-artist--header-line-form)
+                      (when shape-artist--saved-header-line-format
+                        (list "  " shape-artist--saved-header-line-format))))
+  ;; Set initial mode through the central transition contract.
+  (shape-artist--enter-mode 'move)
   ;; Add post-command hook (buffer-local)
   (add-hook 'post-command-hook #'shape-artist--post-command nil t)
   ;; Add picture-mode exit hook for cleanup (US-13.3)
@@ -779,11 +899,14 @@ TITLE is a string or nil.  When nil, skip the box."
   (shape-artist--clear-preview-state)
   (when (fboundp 'shape-artist-guides-clear-overlays)
     (shape-artist-guides-clear-overlays))
+  (when (fboundp 'shape-artist-shape-edit-clear-overlays)
+    (shape-artist-shape-edit-clear-overlays))
   ;; Restore cursor
   (when shape-artist--saved-cursor-type
     (setq cursor-type shape-artist--saved-cursor-type))
   ;; Remove mode-line segment
   (setq mode-line-format (delete shape-artist--mode-line-form mode-line-format))
+  (setq header-line-format shape-artist--saved-header-line-format)
   ;; Disable whitespace
   (whitespace-mode -1)
   ;; Reset mode

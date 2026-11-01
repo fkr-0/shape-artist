@@ -82,6 +82,37 @@
     (should (eq (key-binding (kbd "z") t)
                 #'shape-artist-ui-center-diagram))))
 
+(ert-deftest test-shape-artist-e2e-key-driven-mode-visual-contract ()
+  "Real key transitions keep mode badges, cursor cues, and target overlays aligned."
+  (test-shape-artist-e2e-with-artist-buffer
+      "+---+\n|   |\n+---+"
+    (should (eq shape-artist--mode 'move))
+    (should (string-match-p "MOVE · NAVIGATE"
+                            (substring-no-properties
+                             (shape-artist--header-line-segment-fn))))
+    (test-shape-artist-e2e--press "d")
+    (should (eq shape-artist--mode 'draw))
+    (should (equal cursor-type '(hbar . 3)))
+    (should (string-match-p "DRAW · CREATE"
+                            (substring-no-properties
+                             (shape-artist--header-line-segment-fn))))
+    (test-shape-artist-e2e--press "<escape>")
+    (should (eq shape-artist--mode 'move))
+    (test-shape-artist-e2e--press "C-n")
+    (should (eq shape-artist--mode 'select))
+    (should (eq cursor-type 'hollow))
+    (should shape-artist--select-overlays)
+    (should (eq (overlay-get (car shape-artist--select-overlays) 'face)
+                'shape-artist-select-current-face))
+    (test-shape-artist-e2e--press "RET")
+    (should (eq shape-artist--mode 'shape-edit))
+    (should shape-artist--edit-target-overlays)
+    (should (eq (overlay-get (car shape-artist--edit-target-overlays) 'face)
+                'shape-artist-edit-target-face))
+    (should (string-match-p "EDIT · TRANSFORM"
+                            (substring-no-properties
+                             (shape-artist--header-line-segment-fn))))))
+
 (ert-deftest test-shape-artist-e2e-select-edit-preserves-lock-across-repeated-ops ()
   "Repeated SHAPE-EDIT commands keep the lock on the current parsed shape."
   (test-shape-artist-e2e-with-artist-buffer

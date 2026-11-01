@@ -305,6 +305,49 @@
     (shape-artist-enter-move)
     (should (eq shape-artist--mode 'move))))
 
+(ert-deftest test-artist-core-mode-contract-drives-visual-state ()
+  "Central mode transitions update cursor and presentation metadata together."
+  (test-artist-with-buffer
+      "abc"
+    (let ((events nil))
+      (let ((shape-artist-mode-changed-hook
+             (list (lambda (old new) (push (list old new) events)))))
+        (setq shape-artist--mode 'move)
+        (shape-artist--enter-mode 'draw t)
+        (should (eq shape-artist--mode 'draw))
+        (should (equal cursor-type '(hbar . 3)))
+        (should (equal (shape-artist--mode-property :activity) "CREATE"))
+        (should (string-match-p "DRAW · CREATE"
+                                (substring-no-properties
+                                 (shape-artist--header-line-segment-fn))))
+        (should (equal events '((move draw))))))))
+
+(ert-deftest test-artist-core-mode-contract-has-distinct-accessible-faces ()
+  "Each user mode has an explicit semantic face and activity label."
+  (let ((faces (mapcar (lambda (mode)
+                         (shape-artist--mode-property :face mode))
+                       '(move draw select shape-edit)))
+        (activities (mapcar (lambda (mode)
+                              (shape-artist--mode-property :activity mode))
+                            '(move draw select shape-edit))))
+    (should (= (length (delete-dups (copy-sequence faces))) 4))
+    (should (equal activities '("NAVIGATE" "CREATE" "PICK" "TRANSFORM")))))
+
+(ert-deftest test-artist-core-mode-lifecycle-restores-header-and-cursor ()
+  "Enabling artist mode adds strong indicators and disabling restores state."
+  (test-artist-with-buffer
+      "abc"
+    (let ((header-line-format "original header")
+          (cursor-type 'bar))
+      (shape-artist-core-mode 1)
+      (should (eq shape-artist--mode 'move))
+      (should (member shape-artist--header-line-form header-line-format))
+      (shape-artist-enter-draw)
+      (should (equal cursor-type '(hbar . 3)))
+      (shape-artist-core-mode -1)
+      (should (equal header-line-format "original header"))
+      (should (eq cursor-type 'bar)))))
+
 (ert-deftest test-artist-core-cancel-exits-move ()
   "Test that cancel returns to move mode."
   (test-artist-with-buffer

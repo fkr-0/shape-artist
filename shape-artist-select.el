@@ -12,9 +12,7 @@
 (require 'shape-artist-shapes)
 (require 'shape-artist-diagram-parse)
 
-(declare-function evil-select-state "evil")
-(declare-function evil-normal-state "evil")
-(declare-function evil-shape-edit-state "evil")
+(declare-function shape-artist-shape-edit-refresh-overlays "shape-artist-shape-edit")
 
 (defvar-local shape-artist--select-overlays nil
   "Overlays used for current candidate highlighting in SELECT mode.")
@@ -36,13 +34,9 @@
              (> (length shape-artist--last-shapes-list) 0))
     (setq shape-artist--pre-select-pos (shape-artist--current-row-col))
     (setq shape-artist--select-index 0)
-    (setq shape-artist--mode 'select)
-    (when (fboundp 'evil-select-state)
-      (evil-select-state))
+    (shape-artist--enter-mode 'select)
     (shape-artist--select-show-current)
-    (shape-artist--select-refresh-selected-overlays)
-    (shape-artist--update-mode-line)
-    (shape-artist--maybe-update-sidebar)))
+    (shape-artist--select-refresh-selected-overlays)))
 
 (defun shape-artist-select-cancel ()
   "Exit SELECT mode, clear multi-selection, return to MOVE, restore cursor."
@@ -50,14 +44,10 @@
   (shape-artist--select-clear-overlays)
   (shape-artist--select-clear-selected-overlays)
   (setq shape-artist--selected-shape-signatures nil)
-  (setq shape-artist--mode 'move)
-  (when (fboundp 'evil-normal-state)
-    (evil-normal-state))
   (when shape-artist--pre-select-pos
     (shape-artist--goto-row-col (car shape-artist--pre-select-pos)
                                 (cdr shape-artist--pre-select-pos)))
-  (shape-artist--update-mode-line)
-  (shape-artist--maybe-update-sidebar))
+  (shape-artist--enter-mode 'move))
 
 (defun shape-artist-select-confirm ()
   "Lock current shape or multi-selection and enter SHAPE-EDIT mode."
@@ -68,17 +58,15 @@
       (setq shape-artist--locked-shape (or current (car targets)))
       (shape-artist--select-clear-overlays)
       (shape-artist--select-clear-selected-overlays)
-      (setq shape-artist--mode 'shape-edit)
-      (when (fboundp 'evil-shape-edit-state)
-        (evil-shape-edit-state))
+      (shape-artist--enter-mode 'shape-edit)
       (when shape-artist--locked-shape
         (let ((cx (+ (oref shape-artist--locked-shape x)
                      (/ (oref shape-artist--locked-shape width) 2)))
               (cy (+ (oref shape-artist--locked-shape y)
                      (/ (oref shape-artist--locked-shape height) 2))))
           (shape-artist--goto-row-col cy cx)))
-      (shape-artist--update-mode-line)
-      (shape-artist--maybe-update-sidebar))))
+      (when (fboundp 'shape-artist-shape-edit-refresh-overlays)
+        (shape-artist-shape-edit-refresh-overlays)))))
 
 (defun shape-artist-select-next ()
   "Advance to the next shape candidate."
@@ -137,7 +125,8 @@
   (let ((shape (shape-artist-shapes-current)))
     (when shape
       (setq shape-artist--select-overlays
-            (shape-artist-diagram--highlight-shape shape 'region))
+            (shape-artist-diagram--highlight-shape
+             shape 'shape-artist-select-current-face))
       (let ((cx (+ (oref shape x) (/ (oref shape width) 2)))
             (cy (+ (oref shape y) (/ (oref shape height) 2))))
         (shape-artist--goto-row-col cy cx))
@@ -164,7 +153,7 @@
   (dolist (shape (shape-artist-shapes-selected))
     (setq shape-artist--selected-overlays
           (append (shape-artist-diagram--highlight-shape
-                   shape 'secondary-selection)
+                   shape 'shape-artist-select-marked-face)
                   shape-artist--selected-overlays))))
 
 (defun shape-artist--select-clear-overlays ()
