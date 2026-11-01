@@ -3,10 +3,10 @@
 ;; Copyright (C) 2024-2026 Shape Artist Contributors
 
 ;; Author: Shape Artist Contributors
-;; Version: 0.2.1
+;; Version: 0.3.0
 ;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: convenience, diagrams, art
-;; URL: https://github.com/example/shape-artist
+;; URL: https://github.com/fkr-0/shape-artist
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;;; Commentary:
@@ -17,8 +17,12 @@
 ;; with Evil when available.
 ;;
 ;; Entry points:
-;;   `shape-artist-scratch'  -- open a new artist buffer
-;;   `shape-artist-mode'     -- toggle artist mode in current buffer
+;;   `shape-artist-scratch'       -- open a new artist buffer
+;;   `shape-artist-mode'          -- toggle artist mode in current buffer
+;;   `shape-artist-edit-at-point' -- edit the diagram at point, in place, in any
+;;                                   buffer (comments, Org, Markdown, text)
+;;   `shape-artist-insert-diagram' -- start a new diagram below the current line
+;;   `shape-artist-tutorial'      -- learn the basics interactively
 ;;
 ;; See the Info manual (doc/shape-artist.org) for full documentation.
 

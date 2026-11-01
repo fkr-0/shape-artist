@@ -3,27 +3,83 @@
 All notable changes to Shape Artist are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
-the project follows [Semantic Versioning](https://semver.org/). No release tags
-exist yet; `0.1.0` is the baseline that was recorded by the committed history
-before the `0.2.0` work and was never tagged.
+the project follows [Semantic Versioning](https://semver.org/). Versions
+`0.1.0` to `0.2.1` were recorded in the history before the first public release
+and are tagged retroactively on the commits that introduced them.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-01
+
+A user-experience release: trust, editing where diagrams live, learnability,
+direct manipulation, and diagnosis. See `doc/ux-roadmap.org`.
+
 ### Added
 
-- `scripts/coverage.sh`: line-coverage reporting (undercover) with an optional
-  `--min PERCENT` floor, and a CI coverage job enforcing 95%. Line coverage
-  rose from 78.3% to 97.4% with 119 new tests (253 to 372).
+- **In-place editing.** `shape-artist-edit-at-point` finds the diagram around
+  point (or the active region) in any buffer: comment runs (`;;`, `//`, `#`,
+  `--`, `%`, `*`, `>`, Org `:`), Markdown fences, Org example/source blocks, and
+  indented text. It opens an isolated session with the prefix removed and
+  writes back on `C-c C-c` (`C-c C-k` aborts) with everything else
+  byte-identical, as one undo step, and with a guard if the source changed.
+  `shape-artist-insert-diagram` starts a new diagram in the same comment style.
+- **Mouse support.** Press to select, drag to move with a ghost preview, drag a
+  corner handle to resize, drag across blank canvas to draw, shift-press for a
+  group, double-press to edit a label, right-press for a context menu. Every
+  drag is one undo step.
+- **Interactive sidebar.** `RET` or a click on a shape row selects that shape;
+  `shape-artist-shape-edit-focus` is the public entry point.
+- **Learnability.** `?` shows a mode-aware key hint and, pressed again, a grouped
+  and annotated command palette; `shape-artist-help-cheatsheet` is generated from
+  the keymaps; an Artist menu-bar entry; `shape-artist-tutorial` with a live
+  checklist and persisted progress; a one-time first-run hint.
+- **Diagnose and export.** `E e` explains why a box is not detected, `E r` /
+  `E R` repair near-miss boxes, and `E x` exports Mermaid, Graphviz DOT, or SVG.
+- **Complete styles.** All seven border families are selectable and drawable;
+  the `shape-artist-default-style` option controls DRAW; style commands apply
+  only to the shapes that can take them; cycling stays within a box's family.
+- **Development.** `scripts/coverage.sh` with a CI coverage floor of 95%, and
+  seeded property tests (random moves, resizes, and restyles) asserting that
+  edits never corrupt a diagram. 253 tests became 700 and line coverage went
+  from 78% to 97%, with the new tests mutation-checked.
 
-### Known issues
+### Changed
 
-- Re-enabling `shape-artist-core-mode` in a buffer that is already in
-  `picture-mode` signals "You are already editing a picture". This affects
-  enabling twice and toggling `shape-artist-mode` off and back on in one buffer;
-  `shape-artist-quit` first avoids it. Present since 0.1.0 and tracked by two
-  expected-failure tests.
-- Moving a rectangle along an attached vertical connector can shrink the
-  connector to a single cell, which is then drawn as a stray `-`.
+- **Breaking:** `u` is always undo (it toggled the sidebar outside DRAW mode);
+  `a` now toggles the sidebar (it only showed it). The documentation keymaps now
+  list every live key, and the key audit is enforced by a test.
+- `?` opens the key hint instead of going straight to the palette; the palette
+  is the second press.
+- Guide changes are part of ordinary Emacs undo: one `undo` reverts text and
+  guides together. `G u` / `G R` still work and stay in step.
+- `shape-artist-quit` and turning the mode off return the buffer to its previous
+  major mode, without altering the text.
+- Error messages state the cause, the offending value, and the remedy.
+- Evil states are driven only when Evil is active in the buffer.
+
+### Fixed
+
+- Enabling the mode twice, or toggling `shape-artist-mode` off and on in one
+  buffer, no longer signals "You are already editing a picture".
+- Moving a box along a short attached connector no longer collapses it to a
+  stray `-`, and moving a box past the far end of an end-attached connector no
+  longer reverses it and corrupts the box. Connectors stay at least two cells
+  long.
+- Dragging past the top or left of the canvas no longer errors during a preview.
+- Loading Evil without enabling it no longer half-initialises Evil in artist
+  buffers.
+
+### Known limitations
+
+- Not yet done from the roadmap: typing a label directly inside a box, a
+  "connect two boxes" tool with automatic routing, DRAW tool selection and key
+  presets, a one-key Org `C-c '` integration (the commands work in Org blocks
+  but have no default binding), and importing Mermaid or DOT.
+- A connector whose stem ends on the middle of a bar (a T-junction) is not
+  joined by the parser's own graph, so the exporter groups segments itself.
+- Boxes that share a border row or column with an earlier box are detected only
+  once.
+- Emacs 27.1 is the declared minimum; the CI matrix covers 27.1 to snapshot.
 
 ## [0.2.1] - 2026-11-01
 
@@ -103,3 +159,9 @@ Baseline recorded by the committed history prior to `0.2.0`; not tagged.
 
 - Migrated parser and outline implementation to the `shape-artist-*` namespace,
   retaining compatibility shims for historical feature names.
+
+[Unreleased]: https://github.com/fkr-0/shape-artist/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/fkr-0/shape-artist/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/fkr-0/shape-artist/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/fkr-0/shape-artist/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/fkr-0/shape-artist/releases/tag/v0.1.0
