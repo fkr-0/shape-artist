@@ -10,6 +10,7 @@
 
 (require 'cl-lib)
 (require 'picture)
+(require 'whitespace)
 (require 'artist)
 
 (defgroup shape-artist nil
@@ -824,16 +825,16 @@ TITLE is a string or nil.  When nil, skip the box."
 
 ;;; --- Lifecycle ---
 
-(defvar shape-artist--saved-cursor-type nil
+(defvar-local shape-artist--saved-cursor-type nil
   "Saved cursor type before entering artist mode.")
 
-(defvar shape-artist--saved-mode-line-format nil
+(defvar-local shape-artist--saved-mode-line-format nil
   "Saved mode-line format before entering artist mode.")
 
 (defvar-local shape-artist--saved-header-line-format nil
   "Saved header-line format before entering artist mode.")
 
-(defvar shape-artist--saved-whitespace-style nil
+(defvar-local shape-artist--saved-whitespace-style nil
   "Saved whitespace style before entering artist mode.")
 
 ;;;###autoload
@@ -864,8 +865,9 @@ TITLE is a string or nil.  When nil, skip the box."
   (setq shape-artist--saved-cursor-type cursor-type)
   (setq shape-artist--saved-mode-line-format mode-line-format)
   (setq shape-artist--saved-header-line-format header-line-format)
-  ;; Enable whitespace visualization
-  (setq-local whitespace-space 'whitespace-space)
+  (setq shape-artist--saved-whitespace-style
+        (and (boundp 'whitespace-style) whitespace-style))
+  ;; Enable whitespace visualization using the standard face-driven renderer.
   (setq-local whitespace-style '(spaces space-mark))
   (whitespace-mode 1)
   ;; Add mode-line segment
@@ -902,13 +904,13 @@ TITLE is a string or nil.  When nil, skip the box."
   (when (fboundp 'shape-artist-shape-edit-clear-overlays)
     (shape-artist-shape-edit-clear-overlays))
   ;; Restore cursor
-  (when shape-artist--saved-cursor-type
-    (setq cursor-type shape-artist--saved-cursor-type))
-  ;; Remove mode-line segment
-  (setq mode-line-format (delete shape-artist--mode-line-form mode-line-format))
+  (setq cursor-type shape-artist--saved-cursor-type)
+  ;; Restore presentation exactly as it was after entering picture-mode.
+  (setq mode-line-format shape-artist--saved-mode-line-format)
   (setq header-line-format shape-artist--saved-header-line-format)
   ;; Disable whitespace
   (whitespace-mode -1)
+  (setq whitespace-style shape-artist--saved-whitespace-style)
   ;; Reset mode
   (setq shape-artist--mode nil)
   (force-mode-line-update))

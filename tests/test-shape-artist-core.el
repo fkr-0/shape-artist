@@ -348,6 +348,46 @@
       (should (equal header-line-format "original header"))
       (should (eq cursor-type 'bar)))))
 
+(ert-deftest test-artist-core-mode-restores-whitespace-style ()
+  "Disabling artist mode restores the buffer's prior `whitespace-style'."
+  (test-artist-with-buffer
+      "abc"
+    (let ((shape-artist--update-sidebar-fn nil)
+          (original nil))
+      (shape-artist-core-mode 1)
+      ;; Capture the style as it was right after `picture-mode' ran.
+      (setq original (default-value 'whitespace-style))
+      (should (equal whitespace-style '(spaces space-mark)))
+      (shape-artist-core-mode -1)
+      (should (equal whitespace-style original)))))
+
+(ert-deftest test-artist-core-mode-saved-state-is-per-buffer ()
+  "Enabling artist mode in another buffer must not clobber saved state.
+Each buffer restores the cursor type it had when *it* entered artist mode."
+  (let ((original-default (default-value 'cursor-type))
+        (shape-artist--update-sidebar-fn nil)
+        (buf-a (generate-new-buffer " *shape-artist-a*"))
+        (buf-b (generate-new-buffer " *shape-artist-b*")))
+    (unwind-protect
+        (progn
+          (setq-default cursor-type 'bar)
+          (with-current-buffer buf-a
+            (insert "abc")
+            (shape-artist-core-mode 1))
+          (setq-default cursor-type 'hbar)
+          (with-current-buffer buf-b
+            (insert "abc")
+            (shape-artist-core-mode 1))
+          (with-current-buffer buf-a
+            (shape-artist-core-mode -1)
+            (should (eq cursor-type 'bar))))
+      (setq-default cursor-type original-default)
+      (dolist (buf (list buf-a buf-b))
+        (when (buffer-live-p buf)
+          (with-current-buffer buf
+            (ignore-errors (shape-artist-core-mode -1)))
+          (kill-buffer buf))))))
+
 (ert-deftest test-artist-core-cancel-exits-move ()
   "Test that cancel returns to move mode."
   (test-artist-with-buffer
