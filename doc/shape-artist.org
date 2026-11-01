@@ -30,15 +30,23 @@ It works without Evil as well, using standard Emacs keybindings.
 
 - *DRAW mode*: Move with =h= / =j= / =k= / =l=, drawing lines and
   rectangles as you go.
-- *Shape detection*: Automatically detects rectangles, edges, and
-  labels from your ASCII art.
+- *Shape detection*: Detects coherent ASCII/Unicode rectangle families, edges,
+  orthogonal connector bends, and labels while rejecting malformed mixed-border
+  boxes rather than guessing.
+- *Graph analysis*: Groups orthogonal edge segments into logical connectors and
+  derives rectangle adjacency, connected components, and shortest paths.
+- *Stable shape IDs*: Parsed rectangles, connectors, and labels get
+  buffer-local IDs that remain stable across unchanged reparses.
 - *SELECT mode*: Cycle through detected shapes with =n= / =p= and
   lock in for editing.
 - *SHAPE-EDIT mode*: Edit labels, move, or resize locked-in shapes.
 - *Normalization*: Trim blank rows/columns, add padding, and
   optionally box with a title.
-- *Sidebar UI*: Persistent sidebar showing state, shapes, labels,
-  and context-sensitive keybindings.
+- *Sidebar UI*: Persistent sidebar showing state, shapes, labels, graph health,
+  guides, and context-sensitive keybindings.
+- *Strong modal feedback*: Theme-aware header/mode/sidebar badges, distinct
+  cursor forms, SELECT candidate/selection overlays, and SHAPE-EDIT target
+  highlighting all follow one central transition contract.
 - *Outline buffer*: Tree view of the detected shape hierarchy.
 
 * Installation
@@ -158,13 +166,56 @@ Edit the locked-in shape.
 
 ** Sidebar and Quick Actions
 
+The sidebar lists parsed shapes with compact metadata IDs such as =sa-1=.
+These IDs are best-effort, buffer-local references derived from normalized
+geometry and label content.  They do not modify the underlying ASCII diagram and
+remain stable across unchanged reparses.  For file-backed buffers, use
+=shape-artist-metadata-save=, =shape-artist-metadata-load=, and
+=shape-artist-metadata-delete-saved= to persist or clear these IDs in
+=.shape-artist/metadata.el= under the current project root.  This identity layer
+is intentionally small for now, but it provides the base for semantic operation
+history and export round-tripping.
+
 The sidebar shows a compact shape tree, including root, rectangles, and edges.
 Tree markers expose interaction state at a glance: =>= marks the current SELECT
 candidate, =L= marks the locked SHAPE-EDIT target, and =*= marks a persistent
 multi-selection member.  The sidebar also shows parsed diagram bounds, size,
-and shape count.  The =?= quick action menu uses Transient when available and
-falls back to =completing-read= otherwise.  =o= opens the larger outline tree
-buffer for navigation, and =z= centers the view on the parsed diagram bounds.
+and shape count.  The =?= quick action menu uses Emacs' built-in
+=completing-read= interface, so command discovery behaves identically regardless
+of optional UI packages.  =o= opens the larger outline tree buffer for
+navigation, and =z= centers the view on the parsed diagram bounds.
+
+The active mode is also visible outside the sidebar.  The header line combines a
+textual mode/activity badge with a short contextual hint, the mode line repeats
+the mode name, and cursor form changes by mode.  These redundant cues avoid
+depending on color alone.  All mode faces inherit semantic Emacs faces so light,
+dark, high-contrast, and customized themes retain control of their palette.
+
+SELECT highlights the current candidate separately from persistent marked
+shapes.  After confirmation, SHAPE-EDIT keeps the locked object or selected
+group strongly highlighted until =ESC= ends the edit.
+
+** Object Families and Graph Analysis
+
+Rectangle parsing is family-aware.  The initial grammar recognizes:
+
+- ASCII standard =+---+=, heavy =+===+=, and light =+...+= boxes;
+- ASCII rounded boxes using =/= and =\= corners;
+- Unicode single-line =┌─┐= / =└─┘= boxes;
+- Unicode rounded =╭─╮= / =╰─╯= boxes;
+- Unicode double-line =╔═╗= / =╚═╝= boxes.
+
+The entire perimeter must agree with the selected family.  A top border from one
+family and bottom border from another is therefore treated as malformed text,
+not a rectangle.  Parsed border-family metadata is retained by move/redraw
+operations, including Unicode boxes.
+
+Edge objects remain straight segments for stable editing compatibility.  A
+second derived graph representation groups segments that share orthogonal bend
+points such as =+=.  It records logical connector routes and rectangle adjacency
+and exposes connected-component and breadth-first shortest-path queries.  This
+separation lets later routing/layout algorithms become smarter without replacing
+the existing shape-edit API.
 
 
 * End-to-End Diagram Manipulation Workflow
@@ -195,10 +246,10 @@ locked shape remains locked across repeated move, resize, and style operations.
 
 ** Current scope and remaining design choices
 
-The implemented model now covers rectangle-centric and straight-edge ASCII
-diagram manipulation: draw, parse, select, multi-select, lock, move, resize,
-label, style, arrows, outline, and sidebar updates all have direct commands and
-end-to-end regression tests.
+The implemented model now covers rectangle-centric ASCII/Unicode box and
+straight-edge manipulation: draw, parse, select, multi-select, lock, move,
+resize, label, style, arrows, outline, graph analysis, guides, and sidebar
+updates all have direct tests, with the modal editing path covered end to end.
 
 Straight connectors also carry endpoint attachment metadata.  Each attached
 endpoint records the rectangle geometry, touched side, and side offset.  Shape
@@ -211,9 +262,14 @@ movement uses that metadata for the first sticking/rerouting slice:
 
 Remaining larger design areas are explicit future work rather than hidden stubs:
 
-- Multi-segment orthogonal rerouting between boxes that move independently.
+- Junction-aware route vertices and obstacle-aware Manhattan rerouting between
+  boxes that move independently.
+- Deterministic layered graph layout with crossing minimization and component
+  packing.
 - Batch alignment/distribution commands beyond grouped move/resize.
 - Freeform non-rectangular shapes such as diamonds.
+
+See =docs/feature-roadmap.md= for the algorithm and release roadmap.
 
 * Normalization
 
@@ -234,7 +290,13 @@ can be customized via =shape-artist-default-padding=.
 ** Faces
 
 - =shape-artist-preview-face=: Face for shape preview overlays.
-  Default: yellow background (#ffff66).
+  Inherits the current theme's =highlight= face.
+- =shape-artist-mode-move-face=, =shape-artist-mode-draw-face=,
+  =shape-artist-mode-select-face=, and =shape-artist-mode-edit-face=: semantic
+  theme-derived mode badges.
+- =shape-artist-select-current-face= and =shape-artist-select-marked-face=:
+  current-candidate versus persistent-selection feedback.
+- =shape-artist-edit-target-face=: active SHAPE-EDIT object/group feedback.
 
 * Evil Integration
 

@@ -1,0 +1,51 @@
+#+title: Shape Artist Trunk Prototype Review
+
+* Scope
+
+The =trunk/= directory is treated as an incubation/reference area for older
+Artist-Assist experiments.  Its modules are not production-ready Shape Artist
+sources: several files refer to placeholder =aa-*= modules or an
+=artist-assist= package that is not part of the current package.
+
+* Reviewed prototype areas
+
+| Prototype file(s) | Idea | Assessment | Action |
+|-------------------+------+------------+--------|
+| =treespec.md=, =aa-tree-adapter.el=, =treemacs-extensions.el= | Tree-backed diagram browser | Useful concept, but full Treemacs/project-index integration requires metadata/indexing not currently present. | Already covered by the built-in sidebar tree and outline buffer. |
+| =aa-transient.el=, =aa-hydra.el= | Discoverable command palette | The discoverability goal is useful, but multiple environment-dependent menu implementations create unnecessary UX and test surface. | Retain one mode-aware =completing-read= command menu plus the persistent sidebar; do not depend on Transient/Hydra. |
+| =aa-layout.el= | Diagram bounds and smart centering | Useful and feasible as a small local UX improvement. | Ported parsed bounds/size sidebar section and =z= center command. |
+| =aa-guide.el= | Guides and snapping | Useful future feature, but current prototype depends on missing shape identity/operation layers and has placeholder overlay logic. | Deferred.  Should be implemented after stable shape identity and operation hooks. |
+| =aa-undo.el=, =aa-op.el= | Semantic operation history / undo tree | Potentially valuable, but it is a large architectural layer.  Current Shape Artist operations mutate buffer text directly and rely on normal Emacs undo plus tested redraw operations. | Deferred.  Needs an explicit operation model before porting. |
+| =aa-index.el=, =aa-metadata.el= | Buffer/project diagram index and semantic metadata | Useful for project-wide discovery, Treemacs, export, and search.  Requires a persisted metadata format and diagram boundary model. | Deferred.  Good candidate for a later feature milestone. |
+| =aa-avl-tree.el= | Spatial index | Not needed at current scale; current parser/test set is small and direct scans are simpler. | Deferred until performance data justifies it. |
+
+* Adopted in this pass
+
+- Dependency-free, mode-aware =completing-read= command palette for =?=.
+- Persistent sidebar remains the primary always-visible discoverability surface.
+- Sidebar layout section with parsed diagram bounds, size, and shape count.
+- =z= keybinding/quick action to center the view on the parsed diagram.
+- =trunk/= excluded from Eldev source discovery, because it is prototype material
+  with intentionally incomplete dependencies.
+
+* Future feature candidates
+
+** Guides and snapping
+
+The guide/grid slice has since landed: buffer-local guides, non-destructive
+overlays, snapping, adoption, project-local persistence, and guide metadata
+undo/redo are implemented and tested.  Future work should build on this shared
+geometry/persistence layer rather than reviving the prototype hooks.
+
+** Semantic operation model
+
+Before porting the operation tree, define a small internal operation struct for
+existing tested operations: move, resize, replace style, edit label, and group
+move.  Then add hooks around these operations and only later build branchable
+history UI.
+
+** Project-level diagram index
+
+Stable buffer-local metadata IDs and project-local metadata sidecars now provide
+the identity substrate.  A future project index should consume that public
+metadata layer rather than add a second shape identity scheme.

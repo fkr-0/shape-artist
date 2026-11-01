@@ -51,7 +51,16 @@ current_coverage:
       covers: [MOVE, DRAW, SELECT, SHAPE-EDIT, Evil-compatible dispatch, non-Evil dispatch]
       files: [shape-artist-core.el, shape-artist-keys.el, shape-artist-select.el, shape-artist-shape-edit.el]
     - id: parser-tree-outline-sidebar
-      covers: [rectangle parsing, edge parsing, label parsing, hierarchy, sidebar tree, outline buffer]
+      covers:
+        - coherent ASCII and Unicode rectangle families
+        - malformed mixed-border rejection
+        - straight and orthogonal-bend edge parsing
+        - connector route grouping
+        - graph adjacency/components/shortest-path analysis
+        - label parsing
+        - hierarchy
+        - sidebar tree and graph health
+        - outline buffer
       files: [shape-artist-diagram-parse.el, shape-artist-diagram-outline.el, shape-artist-ui.el]
     - id: rectangle-edge-editing
       covers: [move, resize, anchored resize, style cycle, arrows, multi-select, grouped move]
@@ -63,10 +72,13 @@ current_coverage:
       covers:
         - sidebar key help
         - "? quick menu"
-        - optional Transient frontend
-        - completing-read fallback
+        - dependency-free completing-read command discovery
+        - centralized MOVE/DRAW/SELECT/SHAPE-EDIT presentation contract
+        - theme-aware mode/header/sidebar badges
+        - distinct cursor forms by mode
+        - distinct current-candidate, marked-selection, and edit-target overlays
         - "o outline"
-      files: [shape-artist-ui.el, shape-artist-keys.el]
+      files: [shape-artist-core.el, shape-artist-ui.el, shape-artist-select.el, shape-artist-shape-edit.el, shape-artist-keys.el]
     - id: layout-bounds-centering
       covers:
         - sidebar bounds
@@ -140,7 +152,10 @@ features:
     title: Stable shape and diagram identity with metadata records
     priority: high
     trunk_sources: [artist-assist.el, aa-metadata.el, tree-ui-spec.md, ext/treespec.md]
-    current_coverage: geometry signatures only; no stable IDs or persisted metadata
+    current_coverage: >-
+      Stable best-effort buffer-local shape IDs and project-local metadata
+      sidecars are implemented. Rich diagram/project records, tags, and a
+      project-wide index remain future work.
     why: >-
       Required by anchors, semantic zones, operation history, export round-trip,
       project index, Treemacs nodes, and stable group selection.
@@ -388,7 +403,11 @@ features:
     title: Orthogonal routing, bendpoints, and stronger connector semantics
     priority: high
     trunk_sources: [README.md, flo-artist-shapes.el, ext/treespec.md]
-    current_coverage: straight attached edges only
+    current_coverage: >-
+      Straight attached-edge editing plus orthogonal `+` bend detection,
+      segment-to-route grouping, rectangle adjacency, connected components, and
+      BFS shortest paths. Route mutation, junction vertices, and automatic
+      obstacle-aware rerouting remain future work.
     prerequisites: [diagram-metadata-and-stable-identity, semantic-operation-model]
     design:
       connector_model:
@@ -411,8 +430,10 @@ features:
         - group move transforms a connector only once
     implementation_slices:
       - name: route metadata and parser grouping
+        status: partial
         tests:
-          - L-shaped connector parses as one route
+          - L-shaped connector parses as one route [implemented]
+          - connected boxes derive graph adjacency/components [implemented]
           - arrow metadata survives route parse
           - unsupported junction warns rather than corrupts
       - name: manual bendpoint/segment editing
@@ -593,24 +614,19 @@ features:
           - mocked Treemacs API sees refresh once per op batch
 
   - id: advanced-discoverability-hud
-    title: Sticky HUD, Transient/Hydra-style UX, which-key, posframe, and tutorial
+    title: Optional extended HUD, which-key integration, and interactive tutorial
     priority: medium
     trunk_sources: [aa-hydra.el, aa-transient.el, hydra_transient.md, flo-artist-hud.el]
-    current_coverage: "? menu with optional Transient fallback"
+    current_coverage: >-
+      Central mode contract, theme-aware header/mode/sidebar indicators,
+      distinct cursor/selection/edit cues, contextual header hints, and one
+      dependency-free completing-read menu.
     prerequisites: []
     design:
-      ui_layers: [completing-read, optional-transient, sticky-transient, echo-hints, which-key, tutorial]
+      ui_layers: [completing-read, persistent-header, persistent-sidebar, echo-hints, optional-which-key, tutorial]
       panels: [move, draw, select, shape-edit, guides, export, history, properties]
-      optional_dependencies: [transient, transient-posframe, which-key, hydra]
+      optional_dependencies: [which-key, posframe]
     implementation_slices:
-      - name: sticky transient suffixes
-        tests:
-          - transient only defined when available
-          - package-lint remains clean without dependency
-      - name: mode-specific transient panels
-        tests:
-          - "? dispatches to mode panel"
-          - select panel excludes draw-only actions
       - name: which-key and echo micro-hints
         tests:
           - hint string changes by mode

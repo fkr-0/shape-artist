@@ -10,12 +10,16 @@ making it easy to draw boxes, lines, and labels in plain text.
 ** Highlights
 
 - Draw with =h/j/k/l= keys, like Vim
-- Automatic rectangle and edge detection
+- Coherent ASCII and Unicode box detection with malformed-border rejection
+- Orthogonal connector bend detection and a derived graph model
+- Stable buffer-local shape IDs for parsed rectangles, connectors, and labels
 - Shape selection and editing (labels, move, resize)
 - Straight connector attachment and sticking during moves
 - Normalization: trim, pad, and box with title
 - Evil integration with custom states
-- Sidebar UI with live shape and guide information
+- Strong theme-aware mode indicators in the header line, mode line, cursor, and sidebar
+- Explicit SELECT candidate/multi-selection and SHAPE-EDIT target highlighting
+- Sidebar UI with live shape, graph, and guide information
 - Buffer-local alignment guides, grid overlays, and guide snapping
 
 * Installation
@@ -27,9 +31,9 @@ making it easy to draw boxes, lines, and labels in plain text.
 
 ** From source
 
+From a source checkout, run:
+
 #+begin_example
-git clone https://github.com/example/shape-artist.git
-cd shape-artist
 eldev test
 #+end_example
 
@@ -39,6 +43,45 @@ Add to your init file:
 (add-to-list 'load-path "/path/to/shape-artist")
 (require 'shape-artist)
 #+end_src
+
+** Local development with straight.el / Doom Emacs
+
+For an actively developed checkout, do not copy package files into the Emacs
+configuration and do not maintain a second hand-written symlink tree.  Let
+=straight.el= expose the checkout through its build directory.  Its generated
+links keep the package manager, autoload generation, and =load-path= ownership
+in one place while edits continue to happen in the original Git repository.
+
+A generic straight.el recipe is:
+
+#+begin_src emacs-lisp
+(straight-use-package
+ '(shape-artist
+   :type nil
+   :local-repo "/absolute/path/to/artist-shapes"
+   :files ("shape-artist*.el" "artist-diagram-*.el")
+   :build (:not compile)))
+#+end_src
+
+=:type nil= means straight.el must not clone, pull, or otherwise manage the
+checkout.  Disabling compilation is useful during development because every
+restart loads the current source through straight's generated symlinks rather
+than a stale byte-compiled file.
+
+In Doom Emacs, declare the same checkout from =packages.el=:
+
+#+begin_src emacs-lisp
+(package! shape-artist
+  :type local
+  :pin nil
+  :recipe (:type nil
+           :local-repo "/absolute/path/to/artist-shapes"
+           :files ("shape-artist*.el" "artist-diagram-*.el")
+           :build (:not compile)))
+#+end_src
+
+Then run =doom sync=.  =:type local= also tells Doom that this repository is
+modified in place and should not be advanced by normal package updates.
 
 * Usage
 
@@ -55,6 +98,36 @@ sidebar.  From there:
 8. In SHAPE-EDIT, use =H/J/K/L= to move the locked shape or group, =>= / =<= to change width or edge length, =+= / =_= to change height or vertical edge length, =[= / =]= and ={= / =}= for left/top anchored resize, and =x= to cycle border or arrow style.
 9. Press =?= for the mode-aware quick action menu, =o= for the outline tree,
    or =z= to center the parsed diagram.
+
+** Modal UX and visual state
+
+The four editing modes intentionally look and behave different.  One central
+mode contract drives the Evil adapter, cursor form, mode-line badge, header-line
+activity/hint, and sidebar state so those surfaces cannot independently drift.
+MOVE is labeled =NAVIGATE=, DRAW =CREATE=, SELECT =PICK=, and SHAPE-EDIT
+=TRANSFORM=.  Faces inherit the current Emacs theme instead of imposing fixed
+RGB backgrounds, and color is never the only state cue.
+
+SELECT uses separate overlays for the current candidate and shapes retained in
+a multi-selection.  SHAPE-EDIT keeps the locked object or group visibly marked
+until editing exits.  Disabling Shape Artist restores the prior cursor,
+header-line, mode-line, and whitespace presentation.
+
+** Object detection and graph analysis
+
+Rectangle recognition validates a coherent border family instead of accepting
+arbitrary mixtures of box punctuation.  Supported families include standard,
+heavy, and light ASCII boxes, ASCII rounded boxes, and Unicode single, rounded,
+and double boxes.  Unicode border families are retained when parsed rectangles
+are moved or redrawn.
+
+Connectors remain editable as straight edge segments, but parsing also derives a
+graph layer.  An ASCII =+= bend may participate in both horizontal and vertical
+segments; those segments are grouped into logical orthogonal routes.  The graph
+provides rectangle adjacency, connected components, and shortest-path analysis,
+and the sidebar reports graph node/connection/component counts.  Automatic
+obstacle-aware rerouting is deliberately a later feature rather than hidden
+inside the parser.
 
 ** Guides and grid overlays
 
@@ -99,6 +172,16 @@ manual guide moves remain exact and predictable.  Guide-only operations maintain
 a small undo/redo stack because overlays, labels, snap distances, and adoption
 links are metadata rather than text edits.
 
+** Metadata and stable shape IDs
+
+Every parsed rectangle, connector, and label receives a buffer-local metadata ID
+such as =sa-1=.  IDs are best-effort and remain stable across unchanged reparses,
+which makes sidebar references, future semantic undo, sidecar metadata, and
+export round-tripping easier to build on.  IDs do not alter the ASCII diagram
+text.  Use =shape-artist-metadata-save=, =shape-artist-metadata-load=, and
+=shape-artist-metadata-delete-saved= to persist or clear IDs for file-backed
+buffers in =.shape-artist/metadata.el= under the current project root.
+
 For file-backed buffers, =shape-artist-guides-save= stores guide IDs, labels,
 visibility, per-guide snap distances, grid settings, and adoption signatures in
 =.shape-artist/guides.el= under the current project root.  The sidecar maps
@@ -106,6 +189,8 @@ project-relative file names to guide snapshots, so the diagram text stays clean.
 Use =shape-artist-guides-load= to restore the current file's guides.
 
 See the [[file:doc/shape-artist.org][full manual]] for complete documentation.
+See [[file:docs/feature-roadmap.md][the feature roadmap]] for routing, layout,
+object-detection, interchange, and project-index milestones.
 
 * Development
 
