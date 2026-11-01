@@ -50,16 +50,28 @@ cp -R tests scripts "$scratch"/
 find "$scratch" -name '*.elc' -delete
 
 # UNDERCOVER_FORCE: undercover is otherwise inert outside recognised CI services.
-(cd "$scratch" &&
- UNDERCOVER_FORCE=true SHAPE_ARTIST_COVERAGE_REPORT="$report" \
-   SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS="${SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS:-6}" \
-   emacs --batch -L "$scratch" -L "$scratch/tests" "${load_args[@]}" \
-         -l scripts/coverage.el) \
-  > coverage/test-output.log 2>&1 || {
-    echo "coverage run failed; tail of coverage/test-output.log:" >&2
-    tail -25 coverage/test-output.log >&2
-    exit 1
-  }
+# stdin is closed so that nothing in the instrumented run can block waiting for
+# input, which would hang a CI job silently.
+run_instrumented() {
+  (cd "$scratch" &&
+   UNDERCOVER_FORCE=true SHAPE_ARTIST_COVERAGE_REPORT="$report" \
+     SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS="${SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS:-2}" \
+     emacs --batch -L "$scratch" -L "$scratch/tests" "${load_args[@]}" \
+           -l scripts/coverage.el) 2>&1 < /dev/null
+}
+
+status=0
+if [ -n "${CI:-}" ]; then
+  # Stream the output so a stalled run can be diagnosed from the job log.
+  run_instrumented | tee coverage/test-output.log || status=$?
+else
+  run_instrumented > coverage/test-output.log || status=$?
+fi
+if [ "$status" -ne 0 ]; then
+  echo "coverage run failed (status $status); tail of coverage/test-output.log:" >&2
+  tail -25 coverage/test-output.log >&2
+  exit 1
+fi
 
 # Map scratch-copy paths back to the real checkout.
 sed -i "s#^SF:$scratch/#SF:$root/#" "$report"

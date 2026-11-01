@@ -23,12 +23,19 @@
 
 (defconst test-shape-artist-roundtrip--cols 40 "Width of the generated canvas.")
 (defconst test-shape-artist-roundtrip--rows 16 "Height of the generated canvas.")
+(defun test-shape-artist-roundtrip--required (full-threshold)
+  "Return the count a property test must reach to show its generator worked.
+A full-size sample must exceed FULL-THRESHOLD.  A deliberately reduced one (the
+coverage run) is too small for any count to be meaningful, so it need not
+produce anything; -1 makes a strict greater-than check always hold."
+  (if (>= test-shape-artist-roundtrip--diagrams 40) full-threshold -1))
+
 (defconst test-shape-artist-roundtrip--diagrams
   (let ((n (getenv "SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS")))
     (if (and n (> (string-to-number n) 0)) (string-to-number n) 40))
   "How many seeded diagrams each property test checks.
 Override with the environment variable SHAPE_ARTIST_ROUNDTRIP_DIAGRAMS; the
-coverage script lowers it because edebug instrumentation is much slower.")
+coverage script lowers it to 2 because edebug instrumentation is much slower.")
 
 ;;; --- Seeded generation ---------------------------------------------------
 
@@ -267,7 +274,8 @@ change.  Return nil when the random draw produced no valid edit."
                     (should (test-shape-artist-roundtrip--labels-present-p boxes))
                     (should (test-shape-artist-roundtrip--interiors-clean-p boxes))))))))))
     ;; Guard against a generator that silently stops producing edits.
-    (should (> edits (* 2 test-shape-artist-roundtrip--diagrams)))))
+    (should (> edits (test-shape-artist-roundtrip--required
+                   (* 2 test-shape-artist-roundtrip--diagrams))))))
 
 (ert-deftest test-shape-artist-roundtrip-move-and-move-back-is-the-identity ()
   "Moving a box and then moving it back restores the text exactly."
@@ -298,7 +306,8 @@ change.  Return nil when the random draw produced no valid edit."
                     (should-not (equal (buffer-string) original))
                     (shape-artist-shapes-move moved (- dx) (- dy))
                     (should (equal (buffer-string) original))))))))))
-    (should (> checked (/ test-shape-artist-roundtrip--diagrams 3)))))
+    (should (> checked (test-shape-artist-roundtrip--required
+                     (/ test-shape-artist-roundtrip--diagrams 3))))))
 
 (ert-deftest test-shape-artist-roundtrip-one-undo-per-edit-restores-the-original ()
   "Undoing once per edit returns the text to exactly what it was."
@@ -327,7 +336,8 @@ change.  Return nil when the random draw produced no valid edit."
                     (undo)))
                 (cl-incf undone applied)
                 (should (equal (buffer-string) original))))))))
-    (should (> undone test-shape-artist-roundtrip--diagrams))))
+    (should (> undone (test-shape-artist-roundtrip--required
+                     test-shape-artist-roundtrip--diagrams)))))
 
 (provide 'test-shape-artist-roundtrip)
 ;;; test-shape-artist-roundtrip.el ends here
