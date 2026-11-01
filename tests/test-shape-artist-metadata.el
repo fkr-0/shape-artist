@@ -190,5 +190,18 @@
     (should (equal (alist-get 'bounds (shape-artist-metadata-shape-snapshot edge))
                    '(1 2 5 4)))))
 
+(ert-deftest test-shape-artist-metadata-errors-say-what-to-do ()
+  "Metadata persistence errors point at the remedy."
+  (test-artist-with-buffer "+---+\n|   |\n+---+"
+    (should (string-match-p
+             "save this buffer"
+             (error-message-string
+              (should-error (shape-artist-metadata-save) :type 'user-error)))))
+  (should (string-match-p
+           "shape-artist-metadata-delete-saved"
+           (error-message-string
+            (should-error (shape-artist-metadata--apply-identity-state '(:bogus t))
+                          :type 'user-error)))))
+
 (provide 'test-shape-artist-metadata)
 ;;; test-shape-artist-metadata.el ends here

@@ -116,7 +116,8 @@
   (pcase orientation
     ((or 'horizontal "horizontal") 'horizontal)
     ((or 'vertical "vertical") 'vertical)
-    (_ (user-error "Guide orientation must be horizontal or vertical"))))
+    (_ (user-error "Guide orientation must be `horizontal' or `vertical', not %S"
+                       orientation))))
 
 (defun shape-artist-guides--active-p (guide)
   "Return non-nil when GUIDE should participate in snapping."
@@ -289,7 +290,7 @@ not undo the same change a second time."
 (defun shape-artist-guides--buffer-key ()
   "Return stable persistence key for the current buffer."
   (unless buffer-file-name
-    (user-error "Guide persistence requires a file-backed buffer"))
+    (user-error "Guide persistence needs a file-backed buffer: save this buffer to a file first (C-x C-w)"))
   (file-relative-name (expand-file-name buffer-file-name)
                       (shape-artist-guides--project-root)))
 
@@ -306,7 +307,7 @@ not undo the same change a second time."
       (insert-file-contents file)
       (let ((data (read (current-buffer))))
         (unless (and (listp data) (plist-member data :buffers))
-          (user-error "Invalid Shape Artist guide persistence file: %s" file))
+          (user-error "Invalid Shape Artist guide persistence file %s: fix or delete that file, then try again" file))
         data))))
 
 (defun shape-artist-guides--write-db (file db)
@@ -939,7 +940,8 @@ Nil SNAP-DISTANCE-VALUE clears the per-guide override."
                             ((string-empty-p raw) nil)
                             (t (string-to-number raw)))))
         (when (and new-distance (< new-distance 0))
-          (user-error "Snap distance must be non-negative"))
+          (user-error "Snap distance must be 0 or more, not %d (leave the answer empty for the default)"
+                      new-distance))
         (shape-artist-guides--record-history)
         (setf (shape-artist-guide-snap-distance guide) new-distance)
         (shape-artist--maybe-update-sidebar)
@@ -984,7 +986,8 @@ Nil SNAP-DISTANCE-VALUE clears the per-guide override."
              (snap-distance (unless (string-empty-p snap-raw)
                               (string-to-number snap-raw))))
         (when (and snap-distance (< snap-distance 0))
-          (user-error "Snap distance must be non-negative"))
+          (user-error "Snap distance must be 0 or more, not %d (leave the answer empty for the default)"
+                      snap-distance))
         (shape-artist-guides--record-history)
         (setf (shape-artist-guide-position guide) (max 0 position))
         (setf (shape-artist-guide-label guide)
@@ -1077,7 +1080,7 @@ Nil SNAP-DISTANCE-VALUE clears the per-guide override."
   "Set grid SIZE for overlays and optional grid snapping."
   (interactive (list (read-number "Grid size: " shape-artist-grid-size)))
   (when (< size 1)
-    (user-error "Grid size must be at least 1"))
+    (user-error "Grid size must be at least 1, not %d" size))
   (shape-artist-guides--record-history)
   (setq shape-artist-grid-size size)
   (shape-artist-guides-refresh-grid-overlays)

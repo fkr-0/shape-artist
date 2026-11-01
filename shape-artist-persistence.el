@@ -75,7 +75,7 @@ temporary directory is still used."
   "Return the normalized persistence root for the current buffer."
   (let ((root (funcall shape-artist-persistence-root-function)))
     (unless (and (stringp root) (not (string-empty-p root)))
-      (user-error "Shape Artist persistence root function returned %S" root))
+      (user-error "Shape Artist persistence root function returned %S; set `shape-artist-persistence-root-function' to a function that returns a directory name" root))
     (file-name-as-directory (expand-file-name root))))
 
 (provide 'shape-artist-persistence)

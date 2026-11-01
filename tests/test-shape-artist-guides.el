@@ -942,5 +942,54 @@
     (shape-artist-guides-undo)
     (should-not shape-artist-guides--guides)))
 
+;;; --- Error Message Quality Tests ---
+
+(defun test-shape-artist-guides--error-text (thunk)
+  "Call THUNK, which must signal a `user-error', and return its message."
+  (error-message-string (should-error (funcall thunk) :type 'user-error)))
+
+(ert-deftest test-shape-artist-guides-errors-explain-cause-and-remedy ()
+  "Guide errors say what was wrong, with the value, and how to fix it."
+  (test-artist-with-guides-buffer "abc"
+    (let ((guide (shape-artist-guides-add 'vertical 2 nil 'manual)))
+      (let ((text (test-shape-artist-guides--error-text
+                   (lambda () (shape-artist-guide-set-snap-distance
+                               (shape-artist-guide-id guide) -3)))))
+        (should (string-match-p "-3" text))
+        (should (string-match-p "0 or more" text))
+        (should (string-match-p "empty" text)))
+      (let ((text (test-shape-artist-guides--error-text
+                   (lambda () (shape-artist-grid-set-size -2)))))
+        (should (string-match-p "-2" text))
+        (should (string-match-p "at least 1" text)))
+      (let ((text (test-shape-artist-guides--error-text
+                   (lambda () (shape-artist-guides-add 'diagonal 1)))))
+        (should (string-match-p "diagonal" text))
+        (should (string-match-p "horizontal" text))))))
+
+(ert-deftest test-shape-artist-guides-persistence-errors-say-what-to-do ()
+  "Persistence errors name the next step instead of just the problem."
+  (test-artist-with-guides-buffer "abc"
+    (should (string-match-p "save this buffer"
+                            (test-shape-artist-guides--error-text
+                             #'shape-artist-guides-save))))
+  (let* ((dir (make-temp-file "shape-artist-bad" t))
+         (default-directory dir)
+         (file (expand-file-name "diagram.txt" dir))
+         (shape-artist-guides-persistence-file ".shape-artist/guides.el"))
+    (write-region "abc" nil file nil 'silent)
+    (make-directory (expand-file-name ".shape-artist" dir))
+    (write-region "(1 2 3)" nil (expand-file-name ".shape-artist/guides.el" dir)
+                  nil 'silent)
+    (let ((buffer (find-file-noselect file)))
+      (unwind-protect
+          (with-current-buffer buffer
+            (let ((text (test-shape-artist-guides--error-text
+                         #'shape-artist-guides-load)))
+              (should (string-match-p "guides.el" text))
+              (should (string-match-p "fix or delete" text))))
+        (kill-buffer buffer)
+        (delete-directory dir t)))))
+
 (provide 'test-shape-artist-guides)
 ;;; test-shape-artist-guides.el ends here

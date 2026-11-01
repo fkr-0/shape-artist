@@ -697,7 +697,8 @@ selected box group can keep its connectors attached while moving."
            (need-left (max 0 (- new-x)))
            (need-top (max 0 (- new-y))))
       (when (or (< new-w 2) (< new-h 2))
-        (user-error "Rectangle must be at least 2x2"))
+        (user-error "Cannot resize to %dx%d: a rectangle must stay at least 2x2 (shrink by less, or grow it first)"
+                    new-w new-h))
       (when (> need-left 0)
         (dotimes (_ need-left) (shape-artist--expand-left))
         (shape-artist--shift-all-shapes need-left 0)

@@ -50,5 +50,13 @@
       (let ((shape-artist-persistence-root-function (lambda () bad)))
         (should-error (shape-artist-persistence-root) :type 'user-error)))))
 
+(ert-deftest test-shape-artist-persistence-root-error-names-the-option ()
+  "An invalid root names the option to configure."
+  (let ((shape-artist-persistence-root-function (lambda () nil)))
+    (should (string-match-p
+             "shape-artist-persistence-root-function"
+             (error-message-string
+              (should-error (shape-artist-persistence-root) :type 'user-error))))))
+
 (provide 'test-shape-artist-persistence)
 ;;; test-shape-artist-persistence.el ends here

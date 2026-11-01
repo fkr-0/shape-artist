@@ -795,4 +795,18 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
                     (car (test-shape-artist-shapes--edges)))
                    '(1 4 1 5)))))
 
+;;; --- Error Message Quality Tests ---
+
+(ert-deftest test-shape-artist-shapes-resize-error-names-the-size-and-the-rule ()
+  "Shrinking below 2x2 reports the attempted size and the 2x2 rule."
+  (test-artist-with-shapes-buffer "+--+\n|  |\n+--+"
+    (let ((err (error-message-string
+                (should-error (shape-artist-shapes-resize-anchored
+                               (car (test-shape-artist-shapes--rects))
+                               'right -3 'bottom 0)
+                              :type 'user-error))))
+      (should (string-match-p "0x2" err))
+      (should (string-match-p "at least 2x2" err))
+      (should (string-match-p "shrink by less" err)))))
+
 ;;; test-shape-artist-shapes.el ends here

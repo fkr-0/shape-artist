@@ -233,7 +233,7 @@ Return SHAPES."
 (defun shape-artist-metadata--apply-identity-state (state)
   "Restore buffer-local identity STATE."
   (unless (and (listp state) (plist-member state :entries))
-    (user-error "Invalid Shape Artist metadata state"))
+    (user-error "Invalid Shape Artist metadata state: the saved identity data is damaged; delete it with M-x shape-artist-metadata-delete-saved"))
   (let ((map (make-hash-table :test 'equal))
         (entries (plist-get state :entries)))
     (dolist (entry entries)
@@ -253,7 +253,7 @@ Return SHAPES."
 (defun shape-artist-metadata--buffer-key ()
   "Return stable persistence key for the current buffer."
   (unless buffer-file-name
-    (user-error "Metadata persistence requires a file-backed buffer"))
+    (user-error "Metadata persistence needs a file-backed buffer: save this buffer to a file first (C-x C-w)"))
   (file-relative-name (expand-file-name buffer-file-name)
                       (shape-artist-metadata--project-root)))
 
@@ -270,7 +270,7 @@ Return SHAPES."
       (insert-file-contents file)
       (let ((data (read (current-buffer))))
         (unless (and (listp data) (plist-member data :buffers))
-          (user-error "Invalid Shape Artist metadata persistence file: %s" file))
+          (user-error "Invalid Shape Artist metadata persistence file %s: fix or delete that file, then try again" file))
         data))))
 
 (defun shape-artist-metadata--write-db (file db)
