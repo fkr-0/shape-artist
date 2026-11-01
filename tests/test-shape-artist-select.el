@@ -204,4 +204,66 @@
       (shape-artist-select-confirm)
       (should (= (oref shape-artist--locked-shape y) 4)))))
 
+;;; --- Multi-Selection Tests ---
+
+(ert-deftest test-shape-artist-select-toggle-current-adds-and-removes ()
+  "Toggling the current candidate adds it to, then removes it from, the selection."
+  (test-artist-with-rect-buffer
+      "+---+\n|   |\n+---+"
+    (shape-artist-select-start)
+    (let ((sig (shape-artist-shapes-signature (shape-artist-shapes-current))))
+      (shape-artist-select-toggle-current)
+      (should (equal shape-artist--selected-shape-signatures (list sig)))
+      (should shape-artist--selected-overlays)
+      (shape-artist-select-toggle-current)
+      (should-not shape-artist--selected-shape-signatures)
+      (should-not shape-artist--selected-overlays))))
+
+(ert-deftest test-shape-artist-select-all-skips-labels-and-clear-empties ()
+  "Select-all picks every non-label shape; clear-selected empties the set."
+  (test-artist-with-rect-buffer
+      "+----+  +--+\n| ab |  |  |\n+----+  +--+"
+    (shape-artist-select-start)
+    (shape-artist-select-all)
+    (let ((expected (mapcar #'shape-artist-shapes-signature
+                            (cl-remove-if #'shape-artist-diagram-label-p
+                                          shape-artist--last-shapes-list))))
+      (should (= (length expected) 2))
+      (should (equal shape-artist--selected-shape-signatures expected)))
+    (should-not (cl-find-if
+                 (lambda (sig) (eq (car sig) 'label))
+                 shape-artist--selected-shape-signatures))
+    ;; Each selected shape is highlighted by overlays covering its rows.
+    (should shape-artist--selected-overlays)
+    (shape-artist-select-clear-selected)
+    (should-not shape-artist--selected-shape-signatures)
+    (should-not shape-artist--selected-overlays)
+    ;; Clearing the selection keeps SELECT mode active.
+    (should (eq shape-artist--mode 'select))))
+
+(ert-deftest test-shape-artist-select-confirm-locks-first-target-without-candidate ()
+  "With a multi-selection but no current candidate, confirm locks the first target."
+  (test-artist-with-rect-buffer
+      "+--+  +--+\n|  |  |  |\n+--+  +--+"
+    (shape-artist-select-start)
+    (shape-artist-select-all)
+    (let ((first (shape-artist-shapes-signature
+                  (car (shape-artist-shapes-selected)))))
+      (setq shape-artist--select-index -1)
+      (shape-artist-select-confirm)
+      (should (eq shape-artist--mode 'shape-edit))
+      (should (equal (shape-artist-shapes-signature shape-artist--locked-shape)
+                     first))
+      (should (= (length shape-artist--selected-shape-signatures) 2)))))
+
+(ert-deftest test-shape-artist-select-confirm-with-nothing-to-lock-is-a-noop ()
+  "Confirming with no candidate and no selection leaves SELECT mode untouched."
+  (test-artist-with-rect-buffer
+      "+---+\n|   |\n+---+"
+    (shape-artist-select-start)
+    (setq shape-artist--select-index -1)
+    (shape-artist-select-confirm)
+    (should (eq shape-artist--mode 'select))
+    (should-not shape-artist--locked-shape)))
+
 ;;; test-shape-artist-select.el ends here
