@@ -34,6 +34,7 @@
 (require 'shape-artist-shapes)
 (require 'shape-artist-diagram-parse)
 (require 'shape-artist-diagram-outline)
+(require 'shape-artist-embed)
 
 ;;;###autoload
 (defun shape-artist-scratch ()

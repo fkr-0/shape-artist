@@ -40,6 +40,9 @@
 (load (expand-file-name "test-shape-artist-roundtrip.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-embed.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-guides.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
