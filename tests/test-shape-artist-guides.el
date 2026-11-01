@@ -605,5 +605,256 @@
       (shape-artist-guide-toggle-nearest-visibility)
       (should (shape-artist-guide-visible near)))))
 
+;;; --- Guide Creation, Toggle, and Grid Command Tests ---
+
+(defun test-shape-artist-guides--summary ()
+  "Return (ORIENTATION POSITION LABEL) for every guide, in creation order."
+  (mapcar (lambda (guide)
+            (list (shape-artist-guide-orientation guide)
+                  (shape-artist-guide-position guide)
+                  (shape-artist-guide-label guide)))
+          (sort (copy-sequence shape-artist-guides--guides)
+                (lambda (a b) (< (shape-artist-guide-id a) (shape-artist-guide-id b))))))
+
+(ert-deftest test-shape-artist-guides-create-at-point-or-explicit-position ()
+  "Guides are created at point by default, or at an explicit position and label."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (shape-artist--goto-row-col 2 3)
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-create-horizontal))
+                   '("Horizontal guide at row 2")))
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-create-vertical))
+                   '("Vertical guide at column 3")))
+    (shape-artist-guide-create-horizontal 0 "top")
+    (shape-artist-guide-create-vertical 4 "right")
+    (should (equal (test-shape-artist-guides--summary)
+                   '((horizontal 2 nil) (vertical 3 nil)
+                     (horizontal 0 "top") (vertical 4 "right"))))))
+
+(ert-deftest test-shape-artist-guides-create-interactive-prefix-prompts-for-position ()
+  "With a prefix argument the guide position is read from the minibuffer."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let ((current-prefix-arg '(4)))
+      (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 1)))
+        (call-interactively #'shape-artist-guide-create-horizontal)
+        (call-interactively #'shape-artist-guide-create-vertical)))
+    (should (equal (test-shape-artist-guides--summary)
+                   '((horizontal 1 nil) (vertical 1 nil))))))
+
+(ert-deftest test-shape-artist-guides-global-toggles-flip-and-undo ()
+  "Visibility, guide snapping, and grid snapping toggle and can be undone."
+  (dolist (spec '((shape-artist-guide-toggle-visibility . shape-artist-guides-visible)
+                  (shape-artist-snap-toggle . shape-artist-guides-snap-enabled)
+                  (shape-artist-grid-snap-toggle . shape-artist-grid-snap-enabled)))
+    (ert-info ((format "%s" (car spec)))
+      (test-artist-with-guides-buffer "abc"
+        (let ((before (and (symbol-value (cdr spec)) t)))
+          (funcall (car spec))
+          (should (eq (and (symbol-value (cdr spec)) t) (not before)))
+          (shape-artist-guides-undo)
+          (should (eq (and (symbol-value (cdr spec)) t) before)))))))
+
+(ert-deftest test-shape-artist-guides-toggle-messages-report-new-state ()
+  "Each toggle reports the state it switched to."
+  (test-artist-with-guides-buffer "abc"
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-snap-toggle) (shape-artist-snap-toggle))
+                   '("Guide snapping disabled" "Guide snapping enabled")))
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-grid-snap-toggle))
+                   '("Grid snapping enabled")))
+    (should (equal (test-shape-artist-guides--capturing-messages
+                     (shape-artist-guide-toggle-visibility))
+                   '("Guide overlays hidden")))))
+
+(ert-deftest test-shape-artist-guides-grid-set-size-validates ()
+  "The grid size can be set, prompted for, and must be at least one."
+  (test-artist-with-guides-buffer "abc"
+    (shape-artist-grid-set-size 8)
+    (should (= shape-artist-grid-size 8))
+    (should-error (shape-artist-grid-set-size 0) :type 'user-error)
+    (should (= shape-artist-grid-size 8))
+    (cl-letf (((symbol-function 'read-number) (lambda (&rest _) 5)))
+      (call-interactively #'shape-artist-grid-set-size))
+    (should (= shape-artist-grid-size 5))
+    (shape-artist-guides-undo)
+    (should (= shape-artist-grid-size 8))))
+
+(ert-deftest test-shape-artist-guides-clear-adoptions-one-or-all ()
+  "Adoptions can be cleared for one guide or all guides, and undone."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let* ((sig (shape-artist-shapes-signature (test-shape-artist-guides--first-rect)))
+           (a (shape-artist-guides-add 'vertical 0 nil 'manual))
+           (b (shape-artist-guides-add 'vertical 4 nil 'manual)))
+      (shape-artist-guides--adopt-signatures a (list sig))
+      (shape-artist-guides--adopt-signatures b (list sig))
+      (shape-artist-guide-clear-adoptions (shape-artist-guide-id a))
+      (should-not (shape-artist-guide-adopted-shape-signatures a))
+      (should (shape-artist-guide-adopted-shape-signatures b))
+      (shape-artist-guide-clear-adoptions)
+      (should-not (shape-artist-guide-adopted-shape-signatures b))
+      (shape-artist-guides-undo)
+      (should (shape-artist-guide-adopted-shape-signatures
+               (shape-artist-guides--guide-at-id (shape-artist-guide-id b)))))))
+
+(ert-deftest test-shape-artist-guides-set-label-explicit-prompted-and-cleared ()
+  "Guide labels can be given, prompted for, and cleared with an empty answer."
+  (test-artist-with-guides-buffer "abc"
+    (let* ((guide (shape-artist-guides-add 'vertical 2 nil 'manual))
+           (id (shape-artist-guide-id guide)))
+      (shape-artist-guide-set-label id "main")
+      (should (equal (shape-artist-guide-label guide) "main"))
+      (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "renamed")))
+        (shape-artist-guide-set-label id))
+      (should (equal (shape-artist-guide-label guide) "renamed"))
+      (shape-artist-guide-set-label id "")
+      (should-not (shape-artist-guide-label guide)))))
+
+(ert-deftest test-shape-artist-guides-nearest-visibility-compares-both-orientations ()
+  "The nearest guide is chosen across orientations, preferring a tie to the row guide."
+  (test-artist-with-guides-buffer
+      "+---+\n|   |\n+---+"
+    (let ((row (shape-artist-guides-add 'horizontal 2 nil 'manual))
+          (col (shape-artist-guides-add 'vertical 0 nil 'manual)))
+      ;; Row 0, column 1: the column guide is 1 away, the row guide 2.
+      (shape-artist--goto-row-col 0 1)
+      (shape-artist-guide-toggle-nearest-visibility)
+      (should-not (shape-artist-guide-visible col))
+      (should (shape-artist-guide-visible row))
+      ;; Row 1, column 1: both guides are 1 away, so the row guide wins.
+      (shape-artist--goto-row-col 1 1)
+      (shape-artist-guide-toggle-nearest-visibility)
+      (should-not (shape-artist-guide-visible row)))))
+
+(ert-deftest test-shape-artist-guides-adopt-uses-multi-selection ()
+  "A multi-selection is adopted as a whole, ahead of any locked shape."
+  (test-artist-with-guides-buffer
+      "+--+  +--+\n|  |  |  |\n+--+  +--+"
+    (let ((guide (shape-artist-guides-add 'horizontal 0 nil 'manual)))
+      (setq shape-artist--selected-shape-signatures
+            (mapcar #'shape-artist-shapes-signature (test-shape-artist-guides--rects)))
+      (should (= (length (shape-artist-guides--current-selection)) 2))
+      (shape-artist--goto-row-col 0 0)
+      (should (equal (test-shape-artist-guides--capturing-messages
+                       (shape-artist-guide-adopt-selection-nearest))
+                     (list (format "Guide %d adopted 2 shape(s)"
+                                   (shape-artist-guide-id guide))))))))
+
+;;; --- Resize and Grid Snapping Tests ---
+
+(defconst test-shape-artist-guides--snap-box
+  "      \n      \n  +--+\n  |  |\n  +--+\n      \n      \n"
+  "A 3x2 rectangle at (2,2) with room around it.")
+
+(ert-deftest test-shape-artist-guides-resize-snaps-left-top-and-bottom-edges ()
+  "Resizing from the left, top, or bottom snaps the moving edge to a guide."
+  (test-artist-with-guides-buffer test-shape-artist-guides--snap-box
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      ;; Growing left by 2 would put the edge on column 0; the guide at column 1
+      ;; pulls it there, so the left edge grows by only 1.
+      (shape-artist-guides-add 'vertical 1 nil 'manual)
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'left 2 'bottom 0)
+                               2)
+                     '(1 0)))
+      ;; Growing up by 2 would put the edge on row 0; the guide at row 1 pulls it
+      ;; to row 1, so the top edge grows by only 1.
+      (shape-artist-guides-add 'horizontal 1 nil 'manual)
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'right 0 'top 2)
+                               2)
+                     '(0 1)))
+      ;; Growing down by 1 would put the edge on row 5; the guide at row 6 pulls
+      ;; it there, so the bottom edge grows by 2.
+      (shape-artist-guides-add 'horizontal 6 nil 'manual)
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'right 0 'bottom 1)
+                               2)
+                     '(0 2))))))
+
+(ert-deftest test-shape-artist-guides-resize-snapping-respects-suppression-and-type ()
+  "Resize snapping is skipped when suppressed, disabled, or for non-rectangles."
+  (test-artist-with-guides-buffer test-shape-artist-guides--snap-box
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      (shape-artist-guides-add 'vertical 1 nil 'manual)
+      ;; Unsuppressed, this resize would snap to 1 (see the test above).
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'left 2 'bottom 0)
+                               2)
+                     '(1 0)))
+      (let ((shape-artist-guides--suppress-snapping t))
+        (should (equal (shape-artist-guides-snap-rectangle-resize
+                        rect 'left 2 'bottom 0)
+                       '(2 0 nil))))
+      (let ((shape-artist-guides-snap-enabled nil))
+        (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                  rect 'left 2 'bottom 0)
+                                 2)
+                       '(2 0))))
+      (should (equal (shape-artist-guides-snap-rectangle-resize nil 'left 1 'bottom 0)
+                     '(1 0 nil))))))
+
+(ert-deftest test-shape-artist-guides-grid-snaps-resize-and-deltas ()
+  "With grid snapping on, resizes and deltas land on grid lines."
+  (test-artist-with-guides-buffer test-shape-artist-guides--snap-box
+    (let ((rect (test-shape-artist-guides--first-rect)))
+      (setq shape-artist-grid-size 4)
+      ;; Inactive grid leaves values untouched.
+      (setq shape-artist-grid-snap-enabled nil)
+      (should (= (shape-artist-guides--grid-snap-delta 1 2) 2))
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'right 2 'bottom 0)
+                               2)
+                     '(2 0)))
+      ;; Active grid: right edge 2+3+2=7 snaps to column 8 (a delta of 3).
+      (setq shape-artist-grid-snap-enabled t)
+      (should (= (shape-artist-guides--grid-snap-delta 1 2) 3))
+      (should (equal (seq-take (shape-artist-guides-snap-rectangle-resize
+                                rect 'right 2 'bottom 0)
+                               2)
+                     '(3 0))))))
+
+;;; --- Persistence and Reporting Tests ---
+
+(ert-deftest test-shape-artist-guides-delete-saved-removes-sidecar-entry ()
+  "Deleting saved guides makes a later load find nothing."
+  (let* ((dir (make-temp-file "shape-artist-guides" t))
+         (default-directory dir)
+         (file (expand-file-name "diagram.txt" dir))
+         (shape-artist-guides-persistence-file ".shape-artist/guides.el"))
+    (write-region "+---+\n|   |\n+---+" nil file nil 'silent)
+    (let ((buffer (find-file-noselect file)))
+      (unwind-protect
+          (with-current-buffer buffer
+            (let ((shape-artist--update-sidebar-fn nil)
+                  (shape-artist-guides--guides nil)
+                  (shape-artist-guides--next-id 1))
+              (shape-artist-guides-add 'vertical 2 "saved" 'manual)
+              (shape-artist-guides-save)
+              (shape-artist-guide-clear-all)
+              (shape-artist-guides-delete-saved)
+              (should (string-prefix-p
+                       "No saved Shape Artist guides"
+                       (car (test-shape-artist-guides--capturing-messages
+                              (shape-artist-guides-load)))))
+              (should-not shape-artist-guides--guides)))
+        (kill-buffer buffer)
+        (delete-directory dir t)))))
+
+(ert-deftest test-shape-artist-guides-snap-report-line-and-section ()
+  "The last snap is summarized in one line and surfaced in the sidebar section."
+  (test-artist-with-guides-buffer "abc"
+    (should-not (shape-artist-guides--snap-report-line))
+    (setq shape-artist-guides--last-snap-report
+          '(:source group-move :requested (1 2) :snapped (3 4)))
+    (should (equal (shape-artist-guides--snap-report-line)
+                   "Last snap: group-move (1,2) -> (3,4)\n"))
+    (should (string-match-p "Last snap: group-move"
+                            (shape-artist-guides-section-text)))))
+
 (provide 'test-shape-artist-guides)
 ;;; test-shape-artist-guides.el ends here
