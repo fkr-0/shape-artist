@@ -404,4 +404,63 @@
       (shape-artist-shape-cycle-style)
       (should (equal (buffer-string) before)))))
 
+;;; --- Complete Style Set Tests ---
+
+(ert-deftest test-shape-artist-shape-edit-style-prompt-offers-every-style ()
+  "The interactive style prompt lists every border and edge style."
+  (test-shape-artist-shape-edit--with-lock "+---+\n|   |\n+---+"
+      #'shape-artist-diagram-rectangle-p
+    (let (offered)
+      (cl-letf (((symbol-function 'completing-read)
+                 (lambda (_prompt collection &rest _)
+                   (setq offered collection)
+                   "unicode-double")))
+        (call-interactively #'shape-artist-shape-set-style))
+      (dolist (style (append shape-artist-border-styles shape-artist-edge-styles))
+        (should (member (symbol-name style) offered)))
+      (should (equal (car (shape-artist--get-lines)) "╔═══╗")))))
+
+(ert-deftest test-shape-artist-shape-edit-set-style-skips-shapes-it-does-not-fit ()
+  "In a mixed selection each style applies only to the shapes that can take it."
+  (dolist (case '((arrow-end "+--+" "|  |->")
+                  (heavy "+==+" "|  |--")))
+    (pcase-let ((`(,style ,top ,middle) case))
+      (ert-info ((format "style %s on a box plus connector" style))
+        (test-shape-artist-shape-edit--with-lock "+--+  \n|  |--\n+--+  "
+            #'shape-artist-diagram-rectangle-p
+          (setq shape-artist--selected-shape-signatures
+                (mapcar #'shape-artist-shapes-signature
+                        shape-artist--last-shapes-list))
+          (shape-artist-shape-set-style style)
+          (let ((lines (mapcar #'string-trim-right (shape-artist--get-lines))))
+            (should (equal (nth 0 lines) top))
+            (should (equal (nth 1 lines) middle))))))))
+
+(ert-deftest test-shape-artist-shape-edit-set-style-reports-when-nothing-fits ()
+  "A style that fits none of the targets leaves them alone and says so."
+  (test-shape-artist-shape-edit--with-lock "+----+\n| ab |\n+----+"
+      #'shape-artist-diagram-label-p
+    (let ((before (buffer-string)))
+      (should (string-match-p
+               "does not apply"
+               (car (test-shape-artist-guides--capturing-messages
+                      (shape-artist-shape-set-style 'heavy)))))
+      (should (equal (buffer-string) before)))))
+
+(ert-deftest test-shape-artist-shape-edit-cycle-style-stays-in-the-boxs-family ()
+  "Cycling keeps a Unicode box Unicode and an ASCII box ASCII."
+  (test-shape-artist-shape-edit--with-lock "┌───┐\n│   │\n└───┘"
+      #'shape-artist-diagram-rectangle-p
+    (let (seen)
+      (dotimes (_ 4)
+        (shape-artist-shape-cycle-style)
+        (push (shape-artist-shapes-border-style shape-artist--locked-shape) seen))
+      (should (equal (nreverse seen)
+                     '(unicode-rounded unicode-double unicode-single unicode-rounded)))))
+  (test-shape-artist-shape-edit--with-lock "/---\\\n|   |\n\\---/"
+      #'shape-artist-diagram-rectangle-p
+    (shape-artist-shape-cycle-style)
+    (should (eq (shape-artist-shapes-border-style shape-artist--locked-shape)
+                'standard))))
+
 ;;; test-shape-artist-shape-edit.el ends here

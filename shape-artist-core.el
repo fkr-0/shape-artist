@@ -108,6 +108,27 @@ package still byte-compiles cleanly when Evil is not loaded during build."
 (defvar-local shape-artist--selected-shape-signatures nil
   "Stable signatures of selected shapes for grouped SHAPE-EDIT operations.")
 
+(defconst shape-artist-border-styles
+  '(standard heavy light rounded unicode-single unicode-rounded unicode-double)
+  "Rectangle border styles Shape Artist can both detect and draw.
+Kept in step with the families the parser recognises; a test enforces that.")
+
+(defconst shape-artist-edge-styles '(plain arrow-end arrow-both)
+  "Connector styles a straight edge can be given.")
+
+(defcustom shape-artist-default-style 'standard
+  "Border style DRAW mode uses for newly drawn rectangles.
+Straight lines are always drawn with plain ASCII `-' and `|' so the parser
+keeps recognising them as connectors."
+  :type '(choice (const :tag "ASCII + - |" standard)
+                 (const :tag "ASCII heavy +=+" heavy)
+                 (const :tag "ASCII light +.+" light)
+                 (const :tag "ASCII rounded /-\\" rounded)
+                 (const :tag "Unicode single" unicode-single)
+                 (const :tag "Unicode rounded" unicode-rounded)
+                 (const :tag "Unicode double" unicode-double))
+  :group 'shape-artist)
+
 (defface shape-artist-preview-face
   '((t :inherit highlight :extend t))
   "Face for shape preview overlays."
@@ -525,6 +546,26 @@ When SKIP-EVIL is non-nil, do not request an Evil state transition."
 
 ;;; --- Commit ---
 
+(defun shape-artist--rectangle-style-chars (style)
+  "Return border character plist for STYLE or legacy horizontal char."
+  (if (characterp style)
+      (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h style :v ?|)
+    (pcase style
+      ('rounded
+       (list :tl ?/ :tr ?\\ :bl ?\\ :br ?/ :h ?- :v ?|))
+      ('unicode-single
+       (list :tl ?┌ :tr ?┐ :bl ?└ :br ?┘ :h ?─ :v ?│))
+      ('unicode-rounded
+       (list :tl ?╭ :tr ?╮ :bl ?╰ :br ?╯ :h ?─ :v ?│))
+      ('unicode-double
+       (list :tl ?╔ :tr ?╗ :bl ?╚ :br ?╝ :h ?═ :v ?║))
+      ('heavy
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?= :v ?|))
+      ('light
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?. :v ?|))
+      (_
+       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?- :v ?|)))))
+
 (defun shape-artist--commit-shape ()
   "Commit the previewed shape by drawing actual characters into buffer."
   (when shape-artist--anchor
@@ -554,22 +595,27 @@ When SKIP-EVIL is non-nil, do not request an Evil state transition."
             (insert ?|)))
          ;; Rectangle
          (t
-          ;; Top border
-          (shape-artist--goto-row-col r1 c1)
-          (delete-char (1+ width))
-          (insert ?+ (make-string (1- width) ?-) ?+)
-          ;; Middle rows
-          (dotimes (r (1- height))
-            (shape-artist--goto-row-col (+ r1 1 r) c1)
-            (delete-char 1)
-            (insert ?|)
-            (shape-artist--goto-row-col (+ r1 1 r) c2)
-            (delete-char 1)
-            (insert ?|))
-          ;; Bottom border
-          (shape-artist--goto-row-col r2 c1)
-          (delete-char (1+ width))
-          (insert ?+ (make-string (1- width) ?-) ?+)))))
+          (let* ((chars (shape-artist--rectangle-style-chars
+                         shape-artist-default-style))
+                 (tl (plist-get chars :tl)) (tr (plist-get chars :tr))
+                 (bl (plist-get chars :bl)) (br (plist-get chars :br))
+                 (hc (plist-get chars :h)) (vc (plist-get chars :v)))
+            ;; Top border
+            (shape-artist--goto-row-col r1 c1)
+            (delete-char (1+ width))
+            (insert tl (make-string (1- width) hc) tr)
+            ;; Middle rows
+            (dotimes (r (1- height))
+              (shape-artist--goto-row-col (+ r1 1 r) c1)
+              (delete-char 1)
+              (insert vc)
+              (shape-artist--goto-row-col (+ r1 1 r) c2)
+              (delete-char 1)
+              (insert vc))
+            ;; Bottom border
+            (shape-artist--goto-row-col r2 c1)
+            (delete-char (1+ width))
+            (insert bl (make-string (1- width) hc) br))))))
     (shape-artist--clear-preview-state)
     (shape-artist--ensure-grid-rectangular)
     ;; Re-run shape detection

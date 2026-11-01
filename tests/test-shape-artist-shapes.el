@@ -701,7 +701,7 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
   "Replacing a border rejects unsupported styles and ignores non-rectangles."
   (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
     (should-error (shape-artist-shapes-replace
-                   (car (test-shape-artist-shapes--rects)) 'rounded)
+                   (car (test-shape-artist-shapes--rects)) 'wavy)
                   :type 'user-error)
     (should (equal (shape-artist--get-lines) '("+---+" "|   |" "+---+"))))
   (test-artist-with-shapes-buffer "---"
@@ -808,5 +808,48 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
       (should (string-match-p "0x2" err))
       (should (string-match-p "at least 2x2" err))
       (should (string-match-p "shrink by less" err)))))
+
+;;; --- Complete Style Set Tests ---
+
+(ert-deftest test-shape-artist-shapes-border-styles-match-the-parser-families ()
+  "Every border family the parser detects can also be chosen, and vice versa."
+  (should (equal (sort (copy-sequence shape-artist-border-styles) #'string<)
+                 (sort (mapcar (lambda (spec) (plist-get spec :name))
+                               shape-artist-diagram--box-style-specs)
+                       #'string<))))
+
+(ert-deftest test-shape-artist-shapes-replace-accepts-every-border-family ()
+  "Restyling to any family keeps geometry and label, and the result re-parses."
+  (dolist (style shape-artist-border-styles)
+    (ert-info ((format "restyle to %s" style))
+      (test-artist-with-shapes-buffer "+----+\n| ab |\n+----+"
+        (shape-artist-shapes-replace (car (test-shape-artist-shapes--rects)) style)
+        (let ((now (car (test-shape-artist-shapes--rects))))
+          (should now)
+          (should (eq (oref now detected-style) style))
+          (should (equal (test-shape-artist-shapes--rect-box now) '(0 0 5 2)))
+          (should (string-match-p "ab" (nth 1 (shape-artist--get-lines)))))))))
+
+(ert-deftest test-shape-artist-shapes-replace-error-lists-the-valid-styles ()
+  "An unknown border style names the styles that would have worked."
+  (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
+    (let ((text (error-message-string
+                 (should-error (shape-artist-shapes-replace
+                                (car (test-shape-artist-shapes--rects)) 'wavy)
+                               :type 'user-error))))
+      (should (string-match-p "wavy" text))
+      (dolist (style '("standard" "heavy" "unicode-double"))
+        (should (string-match-p style text))))))
+
+(ert-deftest test-shape-artist-shapes-set-edge-style-error-lists-the-valid-styles ()
+  "An unknown edge style names the styles that would have worked."
+  (test-artist-with-shapes-buffer "---"
+    (let ((text (error-message-string
+                 (should-error (shape-artist-shapes-set-edge-style
+                                (car (test-shape-artist-shapes--edges)) 'wavy)
+                               :type 'user-error))))
+      (should (string-match-p "wavy" text))
+      (dolist (style '("plain" "arrow-end" "arrow-both"))
+        (should (string-match-p style text))))))
 
 ;;; test-shape-artist-shapes.el ends here

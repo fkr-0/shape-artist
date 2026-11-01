@@ -145,26 +145,6 @@
       (delete-char (1+ w))
       (insert (shape-artist--space-string (1+ w))))))
 
-(defun shape-artist--rectangle-style-chars (style)
-  "Return border character plist for STYLE or legacy horizontal char."
-  (if (characterp style)
-      (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h style :v ?|)
-    (pcase style
-      ('rounded
-       (list :tl ?/ :tr ?\\ :bl ?\\ :br ?/ :h ?- :v ?|))
-      ('unicode-single
-       (list :tl ?┌ :tr ?┐ :bl ?└ :br ?┘ :h ?─ :v ?│))
-      ('unicode-rounded
-       (list :tl ?╭ :tr ?╮ :bl ?╰ :br ?╯ :h ?─ :v ?│))
-      ('unicode-double
-       (list :tl ?╔ :tr ?╗ :bl ?╚ :br ?╝ :h ?═ :v ?║))
-      ('heavy
-       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?= :v ?|))
-      ('light
-       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?. :v ?|))
-      (_
-       (list :tl ?+ :tr ?+ :bl ?+ :br ?+ :h ?- :v ?|)))))
-
 (defun shape-artist--draw-rect-border (x y w h &optional style)
   "Draw rectangle border at X Y W H using STYLE.
 
@@ -739,10 +719,13 @@ selected box group can keep its connectors attached while moving."
   "Change rectangle SHAPE border STYLE."
   (interactive
    (list (shape-artist-shapes-current)
-         (intern (completing-read "Border style: " '("standard" "heavy" "light") nil t))))
+         (intern (completing-read "Border style: "
+                                  (mapcar #'symbol-name shape-artist-border-styles)
+                                  nil t))))
   (when (and shape (shape-artist-diagram-rectangle-p shape))
-    (unless (memq style '(standard heavy light))
-      (user-error "Unsupported border style: %s" style))
+    (unless (memq style shape-artist-border-styles)
+      (user-error "Unknown border style `%s'; choose one of: %s"
+                  style (mapconcat #'symbol-name shape-artist-border-styles ", ")))
     (shape-artist--draw-rect-border
      (oref shape x) (oref shape y) (oref shape width) (oref shape height)
      (shape-artist--style-char style))
@@ -751,8 +734,9 @@ selected box group can keep its connectors attached while moving."
 (defun shape-artist-shapes-set-edge-style (edge style)
   "Change EDGE connector STYLE."
   (when (and edge (shape-artist-diagram-edge-p edge))
-    (unless (memq style '(plain arrow-end arrow-both))
-      (user-error "Unsupported edge style: %s" style))
+    (unless (memq style shape-artist-edge-styles)
+      (user-error "Unknown edge style `%s'; choose one of: %s"
+                  style (mapconcat #'symbol-name shape-artist-edge-styles ", ")))
     (shape-artist--draw-edge (oref edge x) (oref edge y) (oref edge x2) (oref edge y2) style)
     (shape-artist-shapes-parse)
     (or (shape-artist-shapes--find-edge

@@ -207,20 +207,48 @@
    'right 0 'top (- (shape-artist-shape-edit--count count))))
 
 (defun shape-artist-shape-set-style (&optional style)
-  "Set rectangle border or edge connector STYLE."
+  "Set rectangle border or edge connector STYLE on the targets.
+Each style applies only to the shapes that can take it, so one command works
+on a mixed selection; when it fits none of them, say so and change nothing."
   (interactive)
   (let ((style (or style
                    (intern (completing-read
                             "Style: "
-                            '("standard" "heavy" "light" "plain" "arrow-end" "arrow-both") nil t)))))
+                            (mapcar #'symbol-name
+                                    (append shape-artist-border-styles
+                                            shape-artist-edge-styles))
+                            nil t))))
+        (applied nil))
     (shape-artist-shape-edit--apply
      (lambda (shape)
        (cond
-        ((shape-artist-diagram-rectangle-p shape)
+        ((and (shape-artist-diagram-rectangle-p shape)
+              (memq style shape-artist-border-styles))
+         (setq applied t)
          (shape-artist-shapes-replace shape style))
-        ((shape-artist-diagram-edge-p shape)
+        ((and (shape-artist-diagram-edge-p shape)
+              (memq style shape-artist-edge-styles))
+         (setq applied t)
          (shape-artist-shapes-set-edge-style shape style))
-        (t shape))))))
+        (t shape))))
+    (unless applied
+      (message "Style %s does not apply to the selected shape(s)" style))))
+
+(defconst shape-artist-shape-edit--ascii-style-cycle '(standard heavy light)
+  "Border styles `x' cycles through for ASCII boxes.")
+
+(defconst shape-artist-shape-edit--unicode-style-cycle
+  '(unicode-single unicode-rounded unicode-double)
+  "Border styles `x' cycles through for Unicode boxes.")
+
+(defun shape-artist-shape-edit--next-border-style (current)
+  "Return the border style after CURRENT, staying within its family.
+A Unicode box cycles single, rounded, double; every ASCII box (including the
+ASCII rounded one) cycles standard, heavy, light."
+  (let ((cycle (if (memq current shape-artist-shape-edit--unicode-style-cycle)
+                   shape-artist-shape-edit--unicode-style-cycle
+                 shape-artist-shape-edit--ascii-style-cycle)))
+    (or (cadr (memq current cycle)) (car cycle))))
 
 (defun shape-artist-shape-cycle-style ()
   "Cycle rectangle border style or edge connector style."
@@ -229,9 +257,9 @@
    (lambda (shape)
      (cond
       ((shape-artist-diagram-rectangle-p shape)
-       (let* ((current (shape-artist-shapes-border-style shape))
-              (next (pcase current ('standard 'heavy) ('heavy 'light) (_ 'standard))))
-         (shape-artist-shapes-replace shape next)))
+       (shape-artist-shapes-replace
+        shape (shape-artist-shape-edit--next-border-style
+               (shape-artist-shapes-border-style shape))))
       ((shape-artist-diagram-edge-p shape)
        (let* ((current (shape-artist-shapes-edge-style shape))
               (next (pcase current ('plain 'arrow-end) ('arrow-end 'arrow-both) (_ 'plain))))

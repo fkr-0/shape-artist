@@ -3,6 +3,7 @@
 (require 'ert)
 (require 'test-helper)
 (require 'shape-artist-core)
+(require 'shape-artist-shapes)
 
 ;;; --- Grid Helper Tests ---
 
@@ -945,5 +946,34 @@ Each buffer restores the cursor type it had when *it* entered artist mode."
         (shape-artist-core-mode -1)
         (should-not shape-artist-core-mode)
         (should (eq major-mode 'text-mode))))))
+
+;;; --- DRAW Default Style Tests ---
+
+(ert-deftest test-artist-core-draw-honours-the-default-style ()
+  "DRAW commits rectangles in `shape-artist-default-style'."
+  (dolist (case '((standard "+---+") (heavy "+===+") (light "+...+")
+                  (rounded "/---\\") (unicode-single "┌───┐")
+                  (unicode-rounded "╭───╮") (unicode-double "╔═══╗")))
+    (pcase-let ((`(,style ,top) case))
+      (ert-info ((format "default style %s" style))
+        (test-artist-core-with-plain-buffer "     \n     \n     "
+          (let ((shape-artist-default-style style))
+            (setq shape-artist--anchor '(0 . 0))
+            (shape-artist--goto-row-col 2 4)
+            (shape-artist--commit-shape)
+            (should (equal (car (shape-artist--get-lines)) top))
+            (should (eq (oref (cl-find-if #'shape-artist-diagram-rectangle-p
+                                          shape-artist--last-shapes-list)
+                              detected-style)
+                        style))))))))
+
+(ert-deftest test-artist-core-draw-lines-stay-plain-whatever-the-default-style ()
+  "Straight lines remain parseable ASCII even with a Unicode default style."
+  (test-artist-core-with-plain-buffer "     \n     "
+    (let ((shape-artist-default-style 'unicode-double))
+      (setq shape-artist--anchor '(0 . 0))
+      (shape-artist--goto-row-col 0 4)
+      (shape-artist--commit-shape)
+      (should (equal (car (shape-artist--get-lines)) "-----")))))
 
 ;;; test-shape-artist-core.el ends here
