@@ -297,6 +297,30 @@ STYLE may be a semantic style symbol or a legacy horizontal character."
   "Return non-nil when ATTACHMENT points at one of RECT-SIGS."
   (and attachment (member (plist-get attachment :rect) rect-sigs)))
 
+(defun shape-artist-shapes--edge-extent-with-minimum (lo hi lo-stuck hi-stuck)
+  "Return (LO . HI) widened so the span covers at least two cells.
+LO-STUCK and HI-STUCK say which ends are attached to a moving rectangle.  An
+attached end stays where the rectangle put it; the free end gives way.  When
+both ends are attached, or neither, LO stays and HI moves."
+  (cond ((> hi lo) (cons lo hi))
+        ((and hi-stuck (not lo-stuck)) (cons (1- hi) hi))
+        (t (cons lo (1+ lo)))))
+
+(defun shape-artist-shapes--finish-edge-plan (edge x y x2 y2 start-stuck end-stuck)
+  "Return the redraw plan for EDGE at X Y X2 Y2, never shorter than two cells.
+START-STUCK and END-STUCK say which ends follow a moving rectangle.  Without
+this rule a rectangle moving into a short connector would collapse it to a
+single glyph, or reverse it and corrupt the rectangle on redraw."
+  (if (shape-artist--edge-horizontal-p edge)
+      (pcase-let ((`(,lo . ,hi) (shape-artist-shapes--edge-extent-with-minimum
+                                 x x2 start-stuck end-stuck)))
+        (setq x lo x2 hi))
+    (pcase-let ((`(,lo . ,hi) (shape-artist-shapes--edge-extent-with-minimum
+                               y y2 start-stuck end-stuck)))
+      (setq y lo y2 hi)))
+  (list :edge edge :style (shape-artist-shapes-edge-style edge)
+        :x x :y y :x2 x2 :y2 y2))
+
 (defun shape-artist-shapes--edge-move-plan-for-rect (edge rect dx dy)
   "Return a straight-edge redraw plan for EDGE stuck to RECT by DX/DY.
 
@@ -334,8 +358,8 @@ translated so the connector remains parseable as one straight edge."
             (setq y (+ y dy)))
           (when end-stuck
             (setq y2 (+ y2 dy)))))
-        (list :edge edge :style (shape-artist-shapes-edge-style edge)
-              :x x :y y :x2 x2 :y2 y2)))))
+        (shape-artist-shapes--finish-edge-plan
+         edge x y x2 y2 start-stuck end-stuck)))))
 
 (defun shape-artist-shapes--attached-edge-plans (rect dx dy)
   "Return redraw plans for edges attached to RECT moving by DX/DY."
@@ -374,8 +398,8 @@ translated so the connector remains parseable as one straight edge."
                   x2 (+ x2 dx)))
           (when start-stuck (setq y (+ y dy)))
           (when end-stuck (setq y2 (+ y2 dy)))))
-        (list :edge edge :style (shape-artist-shapes-edge-style edge)
-              :x x :y y :x2 x2 :y2 y2)))))
+        (shape-artist-shapes--finish-edge-plan
+         edge x y x2 y2 start-stuck end-stuck)))))
 
 (defun shape-artist-shapes--attached-edge-plans-for-rects (rects dx dy)
   "Return redraw plans for edges attached to RECTS moving by DX/DY."

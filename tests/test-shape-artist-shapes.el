@@ -745,4 +745,54 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
       (call-interactively #'shape-artist-shapes-replace))
     (should (equal (car (shape-artist--get-lines)) "+===+"))))
 
+;;; --- Connector Minimum-Length Tests ---
+
+(ert-deftest test-shape-artist-shapes-moving-box-never-collapses-vertical-connector ()
+  "A box moving into a short connector pushes its free end instead of erasing it."
+  (test-artist-with-shapes-buffer
+      "+--+\n|  |\n+--+\n |  \n |  \n    "
+    (shape-artist-shapes-move (car (test-shape-artist-shapes--rects)) 0 1)
+    (should (equal (test-shape-artist-shapes--edge-coords
+                    (car (test-shape-artist-shapes--edges)))
+                   '(1 4 1 5)))
+    (should (equal (shape-artist--get-lines)
+                   '("    " "+--+" "|  |" "+--+" " |  " " |  ")))
+    ;; The connector is still attached to the box it hangs from.
+    (should (eq (plist-get (oref (car (test-shape-artist-shapes--edges))
+                                 start-attachment)
+                           :side)
+                'bottom))))
+
+(ert-deftest test-shape-artist-shapes-moving-box-never-collapses-horizontal-connector ()
+  "The same minimum length holds for a connector on the right of a box."
+  (test-artist-with-shapes-buffer
+      "+--+  \n|  |--\n+--+  "
+    (shape-artist-shapes-move (car (test-shape-artist-shapes--rects)) 1 0)
+    (should (equal (test-shape-artist-shapes--edge-coords
+                    (car (test-shape-artist-shapes--edges)))
+                   '(5 1 6 1)))
+    (should (equal (shape-artist--get-lines)
+                   '(" +--+  " " |  |--" " +--+  ")))))
+
+(ert-deftest test-shape-artist-shapes-moving-box-pulls-free-start-of-end-attached-connector ()
+  "When the stuck end is the far one, the free start is pulled along instead."
+  (test-artist-with-shapes-buffer
+      "   +--+\n---|  |\n   +--+"
+    (shape-artist-shapes-move (car (test-shape-artist-shapes--rects)) -3 0)
+    (should (equal (test-shape-artist-shapes--edge-coords
+                    (car (test-shape-artist-shapes--edges)))
+                   '(0 1 1 1)))
+    ;; The canvas only ever grows, so ignore trailing padding.
+    (should (equal (mapcar #'string-trim-right (shape-artist--get-lines))
+                   '("  +--+" "--|  |" "  +--+")))))
+
+(ert-deftest test-shape-artist-shapes-group-move-keeps-connector-minimum-length ()
+  "Moving a group applies the same minimum connector length."
+  (test-artist-with-shapes-buffer
+      "+--+\n|  |\n+--+\n |  \n |  \n    "
+    (shape-artist-shapes-move-group (test-shape-artist-shapes--rects) 0 1)
+    (should (equal (test-shape-artist-shapes--edge-coords
+                    (car (test-shape-artist-shapes--edges)))
+                   '(1 4 1 5)))))
+
 ;;; test-shape-artist-shapes.el ends here
