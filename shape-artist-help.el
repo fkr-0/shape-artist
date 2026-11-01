@@ -562,11 +562,13 @@ first line of the bound command's docstring.  Nothing is written by hand."
 
 Only single real key bindings are auditable.  Palette mnemonics that contain a
 space (other than the key SPC itself) or list alternatives with / are skipped."
-  (unless (or (string-match-p "/" key-string)
+  (unless (or (string-empty-p key-string)
+              (string-match-p "/" key-string)
               (and (string-match-p " " key-string)
                    (not (equal key-string "SPC"))))
     (condition-case nil
-        (kbd (if (equal key-string "ESC") "<escape>" key-string))
+        (let ((key (kbd (if (equal key-string "ESC") "<escape>" key-string))))
+          (and (> (length key) 0) key))
       (error nil))))
 
 (defun shape-artist-help--all-quick-actions ()
