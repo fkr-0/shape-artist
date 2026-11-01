@@ -14,6 +14,19 @@
 (require 'shape-artist-shapes)
 
 (declare-function shape-artist-help-hint "shape-artist-help")
+(declare-function shape-artist-explain-at-point "shape-artist-explain")
+(declare-function shape-artist-repair-at-point "shape-artist-explain")
+(declare-function shape-artist-repair-all "shape-artist-explain")
+(declare-function shape-artist-export "shape-artist-export")
+
+(defvar shape-artist-diagnose-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "e") #'shape-artist-explain-at-point)
+    (define-key map (kbd "r") #'shape-artist-repair-at-point)
+    (define-key map (kbd "R") #'shape-artist-repair-all)
+    (define-key map (kbd "x") #'shape-artist-export)
+    map)
+  "Prefix keymap (bound to `E') for diagnosing, repairing, and exporting diagrams.")
 
 ;;; --- Descriptive Mode Keymaps ---
 
@@ -30,6 +43,7 @@
 (define-key shape-artist-move-map (kbd "q") #'shape-artist-quit)
 (define-key shape-artist-move-map (kbd "a") #'shape-artist-ui-toggle)
 (define-key shape-artist-move-map (kbd "u") #'shape-artist-undo)
+(define-key shape-artist-move-map (kbd "E") shape-artist-diagnose-map)
 (define-key shape-artist-move-map (kbd "C-n") #'shape-artist-select-start)
 (define-key shape-artist-move-map (kbd "?") #'shape-artist-help-hint)
 (define-key shape-artist-move-map (kbd "o") #'shape-artist-ui-show-outline)
@@ -50,6 +64,7 @@
 (define-key shape-artist-draw-map (kbd "z") #'shape-artist-ui-center-diagram)
 (define-key shape-artist-draw-map (kbd "a") #'shape-artist-ui-toggle)
 (define-key shape-artist-draw-map (kbd "u") #'shape-artist-undo)
+(define-key shape-artist-draw-map (kbd "E") shape-artist-diagnose-map)
 (define-key shape-artist-draw-map (kbd "o") #'shape-artist-ui-show-outline)
 (define-key shape-artist-draw-map (kbd "C-RET") #'shape-artist-commit-stay)
 
@@ -69,6 +84,7 @@
 (define-key shape-artist-select-map (kbd "z") #'shape-artist-ui-center-diagram)
 (define-key shape-artist-select-map (kbd "a") #'shape-artist-ui-toggle)
 (define-key shape-artist-select-map (kbd "u") #'shape-artist-undo)
+(define-key shape-artist-select-map (kbd "E") shape-artist-diagnose-map)
 
 (defvar shape-artist-shape-edit-map (make-sparse-keymap)
   "Keymap for SHAPE-EDIT mode documentation and embedding.")
@@ -100,6 +116,7 @@
 (define-key shape-artist-shape-edit-map (kbd "z") #'shape-artist-ui-center-diagram)
 (define-key shape-artist-shape-edit-map (kbd "a") #'shape-artist-ui-toggle)
 (define-key shape-artist-shape-edit-map (kbd "u") #'shape-artist-undo)
+(define-key shape-artist-shape-edit-map (kbd "E") shape-artist-diagnose-map)
 
 ;;; --- Modal Dispatch Helpers ---
 
@@ -311,6 +328,7 @@
     (define-key shape-artist-core-mode-map (kbd "d") #'shape-artist-enter-draw)
     (define-key shape-artist-core-mode-map (kbd "C-n") #'shape-artist--dispatch-select-start)
     (define-key shape-artist-core-mode-map (kbd "u") #'shape-artist-undo)
+    (define-key shape-artist-core-mode-map (kbd "E") shape-artist-diagnose-map)
     (define-key shape-artist-core-mode-map (kbd "q") #'shape-artist-quit)
     (define-key shape-artist-core-mode-map (kbd "a") #'shape-artist-ui-toggle)
     (define-key shape-artist-core-mode-map (kbd "?") #'shape-artist-help-hint)
@@ -356,6 +374,7 @@
       (kbd "RET") #'shape-artist-commit-preview
       "d" #'shape-artist-enter-draw
       (kbd "C-n") #'shape-artist-select-start
+      "E" shape-artist-diagnose-map
       "u" #'shape-artist-undo
       "q" #'shape-artist-quit
       "a" #'shape-artist-ui-toggle
@@ -378,6 +397,7 @@
       "o" #'shape-artist-ui-show-outline
       "z" #'shape-artist-ui-center-diagram
       "a" #'shape-artist-ui-toggle
+      "E" shape-artist-diagnose-map
       "u" #'shape-artist-undo)
 
     (evil-define-key* 'select shape-artist-core-mode-map
@@ -393,6 +413,7 @@
       "o" #'shape-artist-ui-show-outline
       "z" #'shape-artist-ui-center-diagram
       "a" #'shape-artist-ui-toggle
+      "E" shape-artist-diagnose-map
       "u" #'shape-artist-undo)
 
     (evil-define-key* 'shape-edit shape-artist-core-mode-map
@@ -422,6 +443,7 @@
       "o" #'shape-artist-ui-show-outline
       "z" #'shape-artist-ui-center-diagram
       "a" #'shape-artist-ui-toggle
+      "E" shape-artist-diagnose-map
       "u" #'shape-artist-undo)))
 
 (shape-artist--install-modal-dispatch-keymap)

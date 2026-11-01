@@ -38,6 +38,8 @@
 (require 'shape-artist-mouse)
 (require 'shape-artist-help)
 (require 'shape-artist-tutorial)
+(require 'shape-artist-explain)
+(require 'shape-artist-export)
 
 ;;;###autoload
 (defun shape-artist-scratch ()

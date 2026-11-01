@@ -52,6 +52,12 @@
 (load (expand-file-name "test-shape-artist-tutorial.el"
                         (file-name-directory
                          (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-explain.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
+(load (expand-file-name "test-shape-artist-export.el"
+                        (file-name-directory
+                         (or load-file-name default-directory))))
 (load (expand-file-name "test-shape-artist-guides.el"
                         (file-name-directory
                          (or load-file-name default-directory))))

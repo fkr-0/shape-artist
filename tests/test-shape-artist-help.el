@@ -31,9 +31,13 @@
     ('shape-edit 'shape-artist-shape-edit-map)))
 
 (defun test-shape-artist-help--binding-count (map)
-  "Return how many bindings the sparse keymap MAP defines."
+  "Return how many command bindings MAP defines, counting inside prefix maps."
   (let ((count 0))
-    (map-keymap (lambda (_event _binding) (setq count (1+ count))) map)
+    (map-keymap (lambda (_event binding)
+                  (setq count (+ count (if (and (consp binding) (keymapp binding))
+                                           (test-shape-artist-help--binding-count binding)
+                                         1))))
+                map)
     count))
 
 (defmacro test-shape-artist-help--capturing-messages (var &rest body)
@@ -70,6 +74,9 @@
         (should (> (length pairs) 5))
         (dolist (pair pairs)
           (should (eq (lookup-key map (kbd (car pair))) (cdr pair))))
+        ;; Commands behind the `E' prefix are listed with their full sequence.
+        (should (equal (cdr (assoc "E e" pairs)) 'shape-artist-explain-at-point))
+        (should (equal (cdr (assoc "E x" pairs)) 'shape-artist-export))
         (should (= (length pairs) (length (delete-dups (mapcar #'car pairs)))))))))
 
 (ert-deftest test-shape-artist-help-mode-keys-order-puts-movement-first ()

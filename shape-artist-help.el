@@ -109,23 +109,34 @@ shifted ones.  All remaining keys follow, sorted by key description."
      (rank-b nil)
      (t (string< (car a) (car b))))))
 
+(defun shape-artist-help--collect-bindings (map prefix)
+  "Return (KEY-DESCRIPTION . COMMAND) pairs for every command bound in MAP.
+PREFIX is the key vector already typed.  Prefix keymaps are searched
+recursively, so a command on `E e' is listed under that full sequence."
+  (let ((pairs nil))
+    (map-keymap
+     (lambda (event binding)
+       (let ((keys (vconcat prefix (vector event))))
+         (cond
+          ((and binding (symbolp binding) (not (keymapp binding)))
+           (push (cons (key-description keys) binding) pairs))
+          ((and (consp binding) (keymapp binding))
+           (setq pairs (nconc (shape-artist-help--collect-bindings binding keys)
+                              pairs))))))
+     map)
+    pairs))
+
 (defun shape-artist-help-mode-keys (mode)
   "Return the (KEY-DESCRIPTION . COMMAND) pairs documented for MODE.
 
 The pairs come from MODE's documentation keymap.  Movement keys (h j k l, then
 H J K L) come first, followed by all other keys sorted by key description.
 Every binding is kept: a command bound to several keys appears once per key.
-Only bindings to command symbols are listed; prefix maps and menu items are
-ignored."
-  (let ((map (shape-artist-help--doc-map mode))
-        (pairs nil))
-    (when map
-      (map-keymap
-       (lambda (event binding)
-         (when (and binding (symbolp binding) (not (keymapp binding)))
-           (push (cons (key-description (vector event)) binding) pairs)))
-       map))
-    (sort pairs #'shape-artist-help--key-less-p)))
+Commands behind a prefix key are listed under their full sequence, such as
+`E e'.  Only bindings to command symbols are listed; menu items are ignored."
+  (let ((map (shape-artist-help--doc-map mode)))
+    (sort (and map (shape-artist-help--collect-bindings map []))
+          #'shape-artist-help--key-less-p)))
 
 (defun shape-artist-help--live-key (command mode)
   "Return the live key of COMMAND in MODE reached via a dispatcher, or nil."
@@ -268,6 +279,10 @@ the same key again right away (when `last-command' is this command) opens
     (shape-artist-commit-stay "commit" "keep" "repeat" "box")
     (shape-artist-pick-tool "tool" "character" "brush")
     (shape-artist-undo "undo" "revert" "back")
+    (shape-artist-explain-at-point "explain" "why" "box" "detect" "diagnose")
+    (shape-artist-repair-at-point "repair" "fix" "box" "border")
+    (shape-artist-repair-all "repair" "fix" "all" "border")
+    (shape-artist-export "export" "mermaid" "dot" "svg" "save" "convert")
     (shape-artist-select-next "next" "select" "walk")
     (shape-artist-select-prev "previous" "select" "walk")
     (shape-artist-select-toggle-current "mark" "toggle" "select" "group")
