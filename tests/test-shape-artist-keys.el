@@ -60,10 +60,7 @@ list of (TARGET . ARGS) calls in order and no real command runs."
      (draw . shape-artist-cancel-and-exit)
      (select . shape-artist-select-cancel)
      (shape-edit . shape-artist-shape-edit-exit)
-     (t . nil))
-    (shape-artist--dispatch-utility
-     (draw . shape-artist-undo)
-     (t . shape-artist-ui-toggle)))
+     (t . nil)))
   "For each mode-routing dispatcher, the target command per mode.
 The `t' entry is the fallback for every mode not listed; a nil target means
 the dispatcher intentionally does nothing in that mode.")
@@ -102,10 +99,6 @@ the dispatcher intentionally does nothing in that mode.")
      (shape-artist--dispatch-undo . shape-artist-undo)))
   "Dispatchers that act only in one mode, grouped by that mode.")
 
-(defconst test-shape-artist-keys--gated-multi-mode
-  '(((move select shape-edit) shape-artist--dispatch-ui-toggle . shape-artist-ui-toggle))
-  "Dispatchers that act in several (but not all) modes.")
-
 (ert-deftest test-shape-artist-keys-gated-dispatchers-act-only-in-their-mode ()
   "Mode-gated dispatchers run their command in their mode and nowhere else."
   (dolist (group test-shape-artist-keys--gated)
@@ -117,15 +110,13 @@ the dispatcher intentionally does nothing in that mode.")
                                           (car entry) mode (list (cdr entry))))
                            (and (eq mode active-mode) (list (cdr entry)))))))))))
 
-(ert-deftest test-shape-artist-keys-multi-mode-dispatchers ()
-  "Dispatchers available in several modes are silent in the remaining ones."
-  (dolist (spec test-shape-artist-keys--gated-multi-mode)
-    (pcase-let ((`(,modes ,dispatcher . ,target) spec))
-      (dolist (mode test-shape-artist-keys--all-modes)
-        (ert-info ((format "%s in mode %S" dispatcher mode))
-          (should (equal (mapcar #'car (test-shape-artist-keys--calls
-                                        dispatcher mode (list target)))
-                         (and (memq mode modes) (list target)))))))))
+(ert-deftest test-shape-artist-keys-undo-and-sidebar-keys-mean-one-thing ()
+  "`u' is undo and `a' toggles the sidebar in every mode's documented keymap."
+  (dolist (map (list shape-artist-move-map shape-artist-draw-map
+                     shape-artist-select-map shape-artist-shape-edit-map
+                     shape-artist-core-mode-map))
+    (should (eq (lookup-key map (kbd "u")) #'shape-artist-undo))
+    (should (eq (lookup-key map (kbd "a")) #'shape-artist-ui-toggle))))
 
 ;;; --- Counted shape-edit dispatchers ---
 

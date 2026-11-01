@@ -247,13 +247,13 @@ there are no known shapes."
   (format "=== Keys ===\n%s"
           (pcase shape-artist--mode
             ('move
-             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\nq        Quit\n")
+             "h/j/k/l  Move\nSPC      Enter DRAW + anchor\nRET      Commit preview\nd        Enter DRAW\nC-n      Select shapes\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\na        Toggle sidebar\nu        Undo\nq        Quit\n")
             ('draw
-             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\n?        Quick actions\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Undo\n")
+             "h/j/k/l  Draw\nSPC      Set anchor\nRET      Commit + exit\nC-RET    Commit + stay\nESC      Cancel + exit\np        Pick tool\n?        Quick actions\nz        Center diagram\nG h/v    Add row/column guide via menu\na        Toggle sidebar\nu        Undo\n")
             ('select
-             "n/p      Next/prev shape\nt        Toggle candidate\nT        Select all\nc        Clear selection\ng        Re-parse\nRET      Lock/edit\nESC      Cancel\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\n")
+             "n/p      Next/prev shape\nt        Toggle candidate\nT        Select all\nc        Clear selection\ng        Re-parse\nRET      Lock/edit\nESC      Cancel\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\na        Toggle sidebar\nu        Undo\n")
             ('shape-edit
-             "H/J/K/L  Move shape/group\n>/<      Wider/narrower or edge +/-\n+/_      Taller/shorter or edge +/-\n[/]      Grow/shrink from left\n{/}      Grow/shrink from top\ne        Edit label\nm/r      Prompt move/resize\nx        Cycle style/arrow\ns        Prompt style\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\nu        Toggle sidebar\n")
+             "H/J/K/L  Move shape/group\n>/<      Wider/narrower or edge +/-\n+/_      Taller/shorter or edge +/-\n[/]      Grow/shrink from left\n{/}      Grow/shrink from top\ne        Edit label\nm/r      Prompt move/resize\nx        Cycle style/arrow\ns        Prompt style\nh/j/k/l  Navigate interior\nESC      Exit to MOVE\n?        Quick actions\no        Outline tree\nz        Center diagram\nG h/v    Add row/column guide via menu\na        Toggle sidebar\nu        Undo\n")
             (_ ""))))
 
 (defun shape-artist-ui-show-outline ()
@@ -269,8 +269,8 @@ there are no known shapes."
      (lambda (action)
        (let ((modes (nth 0 action)))
          (or (memq 'all modes) (memq mode modes))))
-     '(((all) "a" "Show sidebar" shape-artist-ui-show)
-       ((all) "u" "Toggle sidebar" shape-artist-ui-toggle)
+     '(((all) "a" "Toggle sidebar" shape-artist-ui-toggle)
+       ((all) "u" "Undo last change" shape-artist-undo)
        ((all) "o" "Show outline tree" shape-artist-ui-show-outline)
        ((all) "z" "Center diagram" shape-artist-ui-center-diagram)
        ((all) "G h" "Create horizontal guide" shape-artist-guide-create-horizontal)
@@ -301,7 +301,6 @@ there are no known shapes."
        ((draw) "RET" "Commit shape and exit draw" shape-artist-commit-and-exit)
        ((draw) "C-RET" "Commit shape and keep drawing" shape-artist-commit-stay)
        ((draw) "p" "Pick draw tool" shape-artist-pick-tool)
-       ((draw) "u" "Undo draw step" shape-artist-undo)
        ((select) "n" "Next candidate" shape-artist-select-next)
        ((select) "p" "Previous candidate" shape-artist-select-prev)
        ((select) "t" "Toggle current candidate" shape-artist-select-toggle-current)

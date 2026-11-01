@@ -27,7 +27,6 @@
 (declare-function evil-normal-state "evil")
 (declare-function evil-change-state "evil")
 (declare-function shape-artist-select-start "shape-artist-select")
-(declare-function shape-artist-ui-toggle "shape-artist-ui")
 (declare-function shape-artist--setup-evil-keymaps "shape-artist-keys")
 
 ;;; --- Evil State Definitions ---
@@ -745,12 +744,6 @@ TITLE is a string or nil.  When nil, skip the box."
   (when (eq shape-artist--mode 'move)
     (shape-artist-select-start)))
 
-(defun shape-artist--dispatch-ui-toggle ()
-  "Toggle sidebar (available in MOVE, SELECT, or SHAPE-EDIT modes)."
-  (interactive)
-  (when (memq shape-artist--mode '(move select shape-edit))
-    (shape-artist-ui-toggle)))
-
 (defun shape-artist--dispatch-commit-stay ()
   "Commit and stay (available in DRAW mode)."
   (interactive)
@@ -855,7 +848,6 @@ previous major mode, local map, and mode name.")
                                       shape-artist-move-map))
             ;; Mode-specific dispatch bindings
             (define-key map (kbd "C-n") #'shape-artist--dispatch-select-start)
-            (define-key map (kbd "u") #'shape-artist--dispatch-ui-toggle)
             (define-key map (kbd "C-RET") #'shape-artist--dispatch-commit-stay)
             (define-key map (kbd "C-<return>") #'shape-artist--dispatch-commit-stay)
             map)
