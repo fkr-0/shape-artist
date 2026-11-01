@@ -470,4 +470,279 @@ Rect at (1,1) w=3 h=2 on 4-line buffer of spaces."
         (should (= (oref (car edges) y2) 2))
         (should (eq (oref (car edges) edge-type) 'connected))))))
 
+;;; --- Identity and Style Tests ---
+
+(defun test-shape-artist-shapes--rects ()
+  "Return parsed rectangles of the current test buffer."
+  (cl-remove-if-not #'shape-artist-diagram-rectangle-p shape-artist--last-shapes-list))
+
+(defun test-shape-artist-shapes--edges ()
+  "Return parsed edges of the current test buffer."
+  (cl-remove-if-not #'shape-artist-diagram-edge-p shape-artist--last-shapes-list))
+
+(defun test-shape-artist-shapes--edge-coords (edge)
+  "Return (X Y X2 Y2) of EDGE."
+  (list (oref edge x) (oref edge y) (oref edge x2) (oref edge y2)))
+
+(defun test-shape-artist-shapes--rect-box (rect)
+  "Return (X Y WIDTH HEIGHT) of RECT."
+  (list (oref rect x) (oref rect y) (oref rect width) (oref rect height)))
+
+(ert-deftest test-shape-artist-shapes-signature-label-and-node ()
+  "Labels and bare nodes get their own signature shapes."
+  (should (equal (shape-artist-shapes-signature
+                  (make-instance 'shape-artist-diagram-label :text "db" :x 1 :y 2))
+                 '(label 1 2 "db")))
+  (should (equal (shape-artist-shapes-signature
+                  (make-instance 'shape-artist-diagram-node
+                                 :x 1 :y 2 :width 3 :height 4))
+                 '(node 1 2 3 4))))
+
+(ert-deftest test-shape-artist-shapes-find-rectangle-by-geometry ()
+  "A rectangle is found only by its exact position and size."
+  (test-artist-with-shapes-buffer
+      "+---+\n|   |\n+---+"
+    (should (eq (shape-artist-shapes--find-rectangle 0 0 4 2)
+                (car (test-shape-artist-shapes--rects))))
+    (should-not (shape-artist-shapes--find-rectangle 0 0 4 3))
+    (should-not (shape-artist-shapes--find-rectangle 1 0 4 2))))
+
+(ert-deftest test-shape-artist-shapes-border-style-falls-back-to-border-glyph ()
+  "Without a detected style the border style is read from the top border."
+  (dolist (case '(("+===+\n|   |\n+===+" . heavy)
+                  ("+...+\n|   |\n+...+" . light)
+                  ("+---+\n|   |\n+---+" . standard)
+                  ("┌───┐\n│   │\n└───┘" . unicode-single)
+                  ("╔═══╗\n║   ║\n╚═══╝" . unicode-double)))
+    (ert-info ((format "expecting %s" (cdr case)))
+      (test-artist-with-buffer (car case)
+        (let ((bare (make-instance 'shape-artist-diagram-rectangle
+                                   :x 0 :y 0 :width 4 :height 2)))
+          (should-not (shape-artist-diagram-node-detected-style bare))
+          (should (eq (shape-artist-shapes-border-style bare) (cdr case))))))))
+
+(ert-deftest test-shape-artist-shapes-edge-style-from-arrow-flags ()
+  "Edge style is derived from the arrow-start and arrow-end flags."
+  (let ((mk (lambda (&rest args)
+              (apply #'make-instance 'shape-artist-diagram-edge
+                     :x 0 :y 0 :x2 3 :y2 0 args))))
+    (should (eq (shape-artist-shapes-edge-style (funcall mk)) 'plain))
+    (should (eq (shape-artist-shapes-edge-style (funcall mk :arrow-end t)) 'arrow-end))
+    (should (eq (shape-artist-shapes-edge-style
+                 (funcall mk :arrow-start t :arrow-end t))
+                'arrow-both))
+    (should-not (shape-artist-shapes-edge-style
+                 (make-instance 'shape-artist-diagram-node)))))
+
+;;; --- Drawing Primitive Tests ---
+
+(ert-deftest test-shape-artist-shapes-draw-rect-border-glyphs-per-style ()
+  "Every supported border style draws its own corner and edge glyphs."
+  (dolist (case '((rounded ?/ ?\\ ?\\ ?/ ?- ?|)
+                  (unicode-single ?┌ ?┐ ?└ ?┘ ?─ ?│)
+                  (unicode-rounded ?╭ ?╮ ?╰ ?╯ ?─ ?│)
+                  (unicode-double ?╔ ?╗ ?╚ ?╝ ?═ ?║)
+                  (heavy ?+ ?+ ?+ ?+ ?= ?|)
+                  (light ?+ ?+ ?+ ?+ ?. ?|)
+                  (standard ?+ ?+ ?+ ?+ ?- ?|)))
+    (pcase-let ((`(,style ,tl ,tr ,bl ,br ,h ,v) case))
+      (ert-info ((format "style %s" style))
+        (test-artist-with-buffer "      \n      \n      "
+          (shape-artist--draw-rect-border 0 0 4 2 style)
+          (let ((at (lambda (row col)
+                      (save-excursion (shape-artist--goto-row-col row col)
+                                      (char-after)))))
+            (should (equal (list (funcall at 0 0) (funcall at 0 4)
+                                 (funcall at 2 0) (funcall at 2 4)
+                                 (funcall at 0 2) (funcall at 1 0))
+                           (list tl tr bl br h v)))))))))
+
+(ert-deftest test-shape-artist-shapes-draw-and-erase-edges-in-both-axes ()
+  "Edges draw with the right glyphs and arrowheads, and erase to blanks."
+  (test-artist-with-buffer "   \n   \n   "
+    (shape-artist--draw-edge 1 0 1 2 'arrow-both)
+    (should (equal (shape-artist--get-lines) '(" ^ " " | " " v ")))
+    (shape-artist--erase-edge 1 0 1 2)
+    (should (equal (shape-artist--get-lines) '("   " "   " "   ")))
+    (shape-artist--draw-edge 1 0 1 2 'arrow-end)
+    (should (equal (shape-artist--get-lines) '(" | " " | " " v ")))
+    (shape-artist--draw-edge 1 0 1 2 'plain)
+    (should (equal (shape-artist--get-lines) '(" | " " | " " | ")))
+    (shape-artist--erase-edge 0 1 2 1)
+    (should (equal (shape-artist--get-lines) '(" | " "   " " | "))))
+  (test-artist-with-buffer "    "
+    (shape-artist--draw-edge 0 0 3 0 'arrow-both)
+    (should (equal (shape-artist--get-lines) '("<-->")))))
+
+(ert-deftest test-shape-artist-shapes-shift-all-shapes-moves-rects-and-edges ()
+  "Shifting translates every known shape, both ends of edges included."
+  (with-temp-buffer
+    (let ((rect (make-instance 'shape-artist-diagram-rectangle
+                               :x 1 :y 1 :width 3 :height 2))
+          (edge (make-instance 'shape-artist-diagram-edge
+                               :x 5 :y 1 :x2 8 :y2 1)))
+      (setq shape-artist--last-shapes-list (list rect edge))
+      (shape-artist--shift-all-shapes 0 0)
+      (should (equal (test-shape-artist-shapes--rect-box rect) '(1 1 3 2)))
+      (shape-artist--shift-all-shapes 2 3)
+      (should (equal (test-shape-artist-shapes--rect-box rect) '(3 4 3 2)))
+      (should (equal (test-shape-artist-shapes--edge-coords edge) '(7 4 10 4))))))
+
+;;; --- Canvas Growth Tests ---
+
+(ert-deftest test-shape-artist-shapes-move-rectangle-past-origin-grows-canvas ()
+  "Moving a rectangle beyond the top-left grows the canvas instead of clipping."
+  (test-artist-with-shapes-buffer
+      "+--+\n|  |\n+--+"
+    (let ((moved (shape-artist-shapes-move (car (test-shape-artist-shapes--rects)) -2 -1)))
+      (should (equal (test-shape-artist-shapes--rect-box moved) '(0 0 3 2)))
+      (should (equal (shape-artist--get-lines)
+                     '("+--+  " "|  |  " "+--+  " "      "))))))
+
+(ert-deftest test-shape-artist-shapes-move-edge-past-origin-grows-canvas ()
+  "Moving an edge beyond the left or top keeps it whole by growing the canvas."
+  (test-artist-with-shapes-buffer "---"
+    (let ((moved (shape-artist-shapes-move (car (test-shape-artist-shapes--edges)) -1 0)))
+      (should (equal (test-shape-artist-shapes--edge-coords moved) '(0 0 2 0)))
+      (should (equal (shape-artist--get-lines) '("--- ")))))
+  (test-artist-with-shapes-buffer " |\n |\n |"
+    (let ((moved (shape-artist-shapes-move (car (test-shape-artist-shapes--edges)) 0 -1)))
+      (should (equal (test-shape-artist-shapes--edge-coords moved) '(1 0 1 2))))))
+
+(ert-deftest test-shape-artist-shapes-resize-anchored-grows-past-origin ()
+  "Growing a rectangle left or up from the origin extends the canvas."
+  (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
+    (let ((grown (shape-artist-shapes-resize-anchored
+                  (car (test-shape-artist-shapes--rects)) 'left 1 'bottom 0)))
+      (should (equal (test-shape-artist-shapes--rect-box grown) '(0 0 5 2)))
+      (should (equal (shape-artist--get-lines) '("+----+" "|    |" "+----+")))))
+  (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
+    (let ((grown (shape-artist-shapes-resize-anchored
+                  (car (test-shape-artist-shapes--rects)) 'right 0 'top 1)))
+      (should (equal (test-shape-artist-shapes--rect-box grown) '(0 0 4 3)))
+      (should (equal (shape-artist--get-lines)
+                     '("+---+" "|   |" "|   |" "+---+"))))))
+
+(ert-deftest test-shape-artist-shapes-edit-label-grows-rectangle-to-fit ()
+  "A label longer than the interior widens the rectangle around it."
+  (test-artist-with-shapes-buffer "+--+\n|  |\n+--+"
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "hello")))
+      (let ((grown (shape-artist-shapes-edit-label
+                    (car (test-shape-artist-shapes--rects)) 'center)))
+        (should (equal (test-shape-artist-shapes--rect-box grown) '(0 0 6 2)))
+        (should (equal (shape-artist--get-lines)
+                       '("+-----+" "|hello|" "+-----+")))))))
+
+;;; --- Connector Tracking Tests ---
+
+(ert-deftest test-shape-artist-shapes-move-rectangle-sideways-drags-vertical-connector ()
+  "A vertical connector hanging off a box follows it when the box moves sideways."
+  (test-artist-with-shapes-buffer
+      "+--+\n|  |\n+--+\n |  \n |  \n    "
+    (let ((rect (car (test-shape-artist-shapes--rects))))
+      (shape-artist-shapes-move rect 2 0)
+      (let ((edge (car (test-shape-artist-shapes--edges))))
+        (should (equal (test-shape-artist-shapes--rect-box
+                        (car (test-shape-artist-shapes--rects)))
+                       '(2 0 3 2)))
+        (should (equal (test-shape-artist-shapes--edge-coords edge) '(3 3 3 4)))
+        (should (eq (plist-get (oref edge start-attachment) :side) 'bottom))))))
+
+(ert-deftest test-shape-artist-shapes-move-rectangle-down-keeps-connector-free-end-fixed ()
+  "Moving a box along its vertical connector shortens it; the free end stays put."
+  (test-artist-with-shapes-buffer
+      "+--+\n|  |\n+--+\n |  \n |  \n |  \n    "
+    (shape-artist-shapes-move (car (test-shape-artist-shapes--rects)) 0 1)
+    (should (equal (test-shape-artist-shapes--edge-coords
+                    (car (test-shape-artist-shapes--edges)))
+                   '(1 4 1 5)))))
+
+(ert-deftest test-shape-artist-shapes-move-past-origin-keeps-connector-attached ()
+  "Growing the canvas while moving a box keeps its connector attached."
+  (let ((content "    \n +--+\n |  |\n +--+\n  |  \n  |  \n     "))
+    (dolist (mover (list (lambda (rects) (shape-artist-shapes-move (car rects) -2 -2))
+                         (lambda (rects) (shape-artist-shapes-move-group rects -2 -2))))
+      (test-artist-with-shapes-buffer content
+        (funcall mover (test-shape-artist-shapes--rects))
+        (should (equal (test-shape-artist-shapes--rect-box
+                        (car (test-shape-artist-shapes--rects)))
+                       '(0 0 3 2)))
+        (should (equal (test-shape-artist-shapes--edge-coords
+                        (car (test-shape-artist-shapes--edges)))
+                       '(1 3 1 6)))))))
+
+;;; --- Edge Extension and Style Tests ---
+
+(ert-deftest test-shape-artist-shapes-edge-extend-vertical-grows-and-clamps ()
+  "Vertical edges extend downward and never shrink below one cell."
+  (test-artist-with-shapes-buffer " |\n |\n  "
+    (let ((edge (shape-artist-shapes-edge-extend
+                 (car (test-shape-artist-shapes--edges)) 2)))
+      (should (equal (test-shape-artist-shapes--edge-coords edge) '(1 0 1 3)))
+      (should (equal (shape-artist--get-lines) '(" |" " |" " |" " |")))))
+  (test-artist-with-shapes-buffer " |\n |\n |\n |"
+    (let ((edge (shape-artist-shapes-edge-extend
+                 (car (test-shape-artist-shapes--edges)) -9)))
+      (should (equal (test-shape-artist-shapes--edge-coords edge) '(1 0 1 1))))))
+
+(ert-deftest test-shape-artist-shapes-set-edge-style-applies-and-validates ()
+  "Edge styles redraw the connector; unknown styles are rejected."
+  (test-artist-with-shapes-buffer "---"
+    (let ((edge (shape-artist-shapes-set-edge-style
+                 (car (test-shape-artist-shapes--edges)) 'arrow-both)))
+      (should (equal (shape-artist--get-lines) '("<->")))
+      (should (oref edge arrow-start))
+      (should (oref edge arrow-end)))
+    (should-error (shape-artist-shapes-set-edge-style
+                   (car (test-shape-artist-shapes--edges)) 'bogus)
+                  :type 'user-error)))
+
+(ert-deftest test-shape-artist-shapes-replace-validates-style-and-shape ()
+  "Replacing a border rejects unsupported styles and ignores non-rectangles."
+  (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
+    (should-error (shape-artist-shapes-replace
+                   (car (test-shape-artist-shapes--rects)) 'rounded)
+                  :type 'user-error)
+    (should (equal (shape-artist--get-lines) '("+---+" "|   |" "+---+"))))
+  (test-artist-with-shapes-buffer "---"
+    (should-not (shape-artist-shapes-replace
+                 (car (test-shape-artist-shapes--edges)) 'heavy))))
+
+;;; --- Interactive Spec Tests ---
+
+(defmacro test-shape-artist-shapes--with-answers (answers &rest body)
+  "Run BODY with `read-number' returning ANSWERS in order."
+  (declare (indent 1))
+  `(let ((answers ,answers))
+     (cl-letf (((symbol-function 'read-number) (lambda (&rest _) (pop answers))))
+       ,@body)))
+
+(ert-deftest test-shape-artist-shapes-move-interactive-prompts-for-offsets ()
+  "Interactively, move acts on the current candidate and prompts for dx and dy."
+  (test-artist-with-shapes-buffer "+--+     \n|  |     \n+--+     "
+    (setq shape-artist--select-index 0)
+    (test-shape-artist-shapes--with-answers '(2 1)
+      (call-interactively #'shape-artist-shapes-move))
+    (should (equal (test-shape-artist-shapes--rect-box
+                    (car (test-shape-artist-shapes--rects)))
+                   '(2 1 3 2)))))
+
+(ert-deftest test-shape-artist-shapes-resize-interactive-prompts-for-size ()
+  "Interactively, resize prompts for the new width and height."
+  (test-artist-with-shapes-buffer "+--+     \n|  |     \n+--+     \n         "
+    (setq shape-artist--select-index 0)
+    (test-shape-artist-shapes--with-answers '(5 3)
+      (call-interactively #'shape-artist-shapes-resize))
+    (should (equal (test-shape-artist-shapes--rect-box
+                    (car (test-shape-artist-shapes--rects)))
+                   '(0 0 5 3)))))
+
+(ert-deftest test-shape-artist-shapes-replace-interactive-prompts-for-style ()
+  "Interactively, replace prompts for a border style and applies it."
+  (test-artist-with-shapes-buffer "+---+\n|   |\n+---+"
+    (setq shape-artist--select-index 0)
+    (cl-letf (((symbol-function 'completing-read) (lambda (&rest _) "heavy")))
+      (call-interactively #'shape-artist-shapes-replace))
+    (should (equal (car (shape-artist--get-lines)) "+===+"))))
+
 ;;; test-shape-artist-shapes.el ends here
