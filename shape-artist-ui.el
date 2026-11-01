@@ -26,14 +26,52 @@
 
 ;;; --- Sidebar Buffer ---
 
+(defvar-local shape-artist--sidebar-parent nil
+  "In a sidebar buffer, the diagram buffer it describes.")
+
+(defvar shape-artist-ui-sidebar-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") #'shape-artist-ui-sidebar-goto)
+    (define-key map (kbd "<mouse-1>") #'shape-artist-ui-sidebar-goto)
+    (define-key map (kbd "<mouse-2>") #'shape-artist-ui-sidebar-goto)
+    map)
+  "Keymap for `shape-artist-ui-sidebar-mode'.")
+
+(define-derived-mode shape-artist-ui-sidebar-mode special-mode "Artist-Sidebar"
+  "Major mode for the Shape Artist sidebar.
+\\<shape-artist-ui-sidebar-mode-map>\\[shape-artist-ui-sidebar-goto] on a row in
+the shape tree selects that shape in the diagram for editing.")
+
+(declare-function shape-artist-shape-edit-focus "shape-artist-shape-edit")
+
+(defun shape-artist-ui-sidebar-goto (&optional event)
+  "Select the shape on the current sidebar row in the diagram, ready to edit.
+With a mouse EVENT, use the row that was clicked."
+  (interactive (list (and (mouse-event-p last-command-event) last-command-event)))
+  (when event (mouse-set-point event))
+  (let ((signature (get-text-property (point) 'shape-artist-signature))
+        (parent shape-artist--sidebar-parent))
+    (unless signature
+      (user-error "No shape row here: move to a line in the Shape Tree and press RET"))
+    (unless (buffer-live-p parent)
+      (user-error "The diagram buffer is gone; reopen the sidebar from a diagram"))
+    (let ((shape (with-current-buffer parent
+                   (shape-artist-shapes-find-by-signature signature))))
+      (unless shape
+        (user-error "That shape no longer exists; refresh the sidebar (press g in the diagram) and try again"))
+      (pop-to-buffer parent)
+      (shape-artist-shape-edit-focus shape))))
+
 (defun shape-artist--get-or-create-sidebar-buffer ()
   "Get or create the sidebar buffer for the current artist buffer."
   (unless shape-artist--sidebar-buffer-name
     (setq shape-artist--sidebar-buffer-name
           (format "*artist-sidebar:%s*" (buffer-name))))
-  (let ((buf (get-buffer-create shape-artist--sidebar-buffer-name)))
+  (let ((buf (get-buffer-create shape-artist--sidebar-buffer-name))
+        (parent (current-buffer)))
     (with-current-buffer buf
-      (special-mode)
+      (shape-artist-ui-sidebar-mode)
+      (setq shape-artist--sidebar-parent parent)
       (setq-local truncate-lines t)
       (setq-local word-wrap nil)
       (buffer-face-set '(:height 0.9)))
@@ -181,11 +219,19 @@ there are no known shapes."
     text))
 
 (defun shape-artist--ui-tree-line (node depth)
-  "Return one sidebar tree line for NODE at DEPTH."
-  (format "%s%s %s\n"
-          (make-string (* 2 depth) ?\s)
-          (shape-artist--ui-shape-markers node)
-          (shape-artist--ui-shape-summary node)))
+  "Return one sidebar tree line for NODE at DEPTH.
+Rows for real shapes are actionable: they carry the shape's signature so that
+`RET' or a click selects it, and hover highlighting says so."
+  (let ((line (format "%s%s %s\n"
+                      (make-string (* 2 depth) ?\s)
+                      (shape-artist--ui-shape-markers node)
+                      (shape-artist--ui-shape-summary node))))
+    (if (shape-artist-diagram-root-p node)
+        line
+      (propertize line
+                  'shape-artist-signature (shape-artist-shapes-signature node)
+                  'mouse-face 'highlight
+                  'help-echo "RET or click: select this shape for editing"))))
 
 (defun shape-artist--ui-shape-markers (shape)
   "Return compact current/locked/selected markers for SHAPE."

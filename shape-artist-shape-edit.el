@@ -31,6 +31,26 @@
                        shape 'shape-artist-edit-target-face)
                       shape-artist--edit-target-overlays))))))
 
+(declare-function shape-artist--select-clear-overlays "shape-artist-select")
+(declare-function shape-artist--select-clear-selected-overlays "shape-artist-select")
+
+(defun shape-artist-shape-edit-focus (shape)
+  "Lock SHAPE and enter SHAPE-EDIT mode with point inside it.
+Works from any mode: a pending DRAW anchor, SELECT highlights, and any
+multi-selection are cleared first, so the edit applies to SHAPE alone.  This is
+the entry point for clicking a shape, or choosing it in the sidebar."
+  (shape-artist--clear-preview-state)
+  (when (fboundp 'shape-artist--select-clear-overlays)
+    (shape-artist--select-clear-overlays)
+    (shape-artist--select-clear-selected-overlays))
+  (setq shape-artist--selected-shape-signatures nil)
+  (setq shape-artist--locked-shape shape)
+  (shape-artist--enter-mode 'shape-edit)
+  (shape-artist--goto-row-col (+ (oref shape y) (/ (oref shape height) 2))
+                              (+ (oref shape x) (/ (oref shape width) 2)))
+  (shape-artist-shape-edit-refresh-overlays)
+  shape)
+
 (defun shape-artist-shape-edit-exit ()
   "Exit SHAPE-EDIT mode, clear locks, and return to MOVE."
   (interactive)

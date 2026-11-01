@@ -463,4 +463,54 @@
     (should (eq (shape-artist-shapes-border-style shape-artist--locked-shape)
                 'standard))))
 
+;;; --- Focus Tests ---
+
+(ert-deftest test-shape-artist-shape-edit-focus-locks-any-kind-of-shape ()
+  "Focusing a rectangle, edge, or label locks it and enters SHAPE-EDIT."
+  (dolist (case '(("+----+\n| ab |\n+----+" shape-artist-diagram-rectangle-p)
+                  ("+----+\n| ab |\n+----+" shape-artist-diagram-label-p)
+                  ("---" shape-artist-diagram-edge-p)))
+    (pcase-let ((`(,content ,predicate) case))
+      (ert-info ((format "%s" predicate))
+        (test-artist-with-locked-shape content
+          (setq shape-artist--mode 'move)
+          (setq shape-artist--locked-shape nil)
+          (let ((target (cl-find-if predicate shape-artist--last-shapes-list)))
+            (shape-artist-shape-edit-focus target)
+            (should (eq shape-artist--mode 'shape-edit))
+            (should (eq shape-artist--locked-shape target))
+            (should shape-artist--edit-target-overlays)))))))
+
+(ert-deftest test-shape-artist-shape-edit-focus-leaves-pending-draw-and-select-state ()
+  "Focusing from DRAW or SELECT clears their transient state first."
+  (test-artist-with-locked-shape "+--+\n|  |\n+--+"
+    (setq shape-artist--mode 'draw)
+    (setq shape-artist--anchor '(0 . 0))
+    (shape-artist-shape-edit-focus (car shape-artist--last-shapes-list))
+    (should-not shape-artist--anchor)
+    (should (eq shape-artist--mode 'shape-edit))
+    (setq shape-artist--mode 'select)
+    (shape-artist-select-start)
+    (should shape-artist--select-overlays)
+    (shape-artist-shape-edit-focus (car shape-artist--last-shapes-list))
+    (should-not shape-artist--select-overlays)))
+
+(ert-deftest test-shape-artist-shape-edit-focus-replaces-a-previous-multi-selection ()
+  "Focusing one shape drops any group selection so edits touch only that shape."
+  (test-artist-with-locked-shape "+--+  +--+\n|  |  |  |\n+--+  +--+"
+    (let ((rects (cl-remove-if-not #'shape-artist-diagram-rectangle-p
+                                   shape-artist--last-shapes-list)))
+      (setq shape-artist--selected-shape-signatures
+            (mapcar #'shape-artist-shapes-signature rects))
+      (shape-artist-shape-edit-focus (car rects))
+      (should-not shape-artist--selected-shape-signatures)
+      ;; A group-style move now affects just the focused rectangle.
+      (shape-artist-shape-move-right 1)
+      (shape-artist-shapes-parse)
+      (should (equal (sort (mapcar (lambda (r) (oref r x))
+                                   (cl-remove-if-not #'shape-artist-diagram-rectangle-p
+                                                     shape-artist--last-shapes-list))
+                           #'<)
+                     '(1 6))))))
+
 ;;; test-shape-artist-shape-edit.el ends here

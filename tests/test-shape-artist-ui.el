@@ -356,7 +356,7 @@
       "abc"
     (let ((buf (shape-artist--get-or-create-sidebar-buffer)))
       (with-current-buffer buf
-        (should (eq major-mode 'special-mode))))))
+        (should (derived-mode-p 'special-mode))))))
 
 ;;; --- Shape Summary Tests ---
 
@@ -561,5 +561,97 @@
                 (cl-find-if predicate shape-artist--last-shapes-list))
           (should (string-match-p (regexp-quote expected)
                                   (shape-artist--ui-locked-shape-section))))))))
+
+;;; --- Interactive Sidebar Tests ---
+
+(defun test-shape-artist-ui--sidebar-line-for (sidebar needle)
+  "Move point in SIDEBAR to the first line matching NEEDLE and return t."
+  (with-current-buffer sidebar
+    (goto-char (point-min))
+    (when (search-forward needle nil t)
+      (beginning-of-line)
+      t)))
+
+(ert-deftest test-shape-artist-ui-sidebar-rows-are-actionable ()
+  "Shape rows carry their signature and hover affordance; the root does not."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+      (let ((sidebar (shape-artist--get-or-create-sidebar-buffer)))
+        (shape-artist-shapes-parse)
+        (shape-artist--update-sidebar)
+        (should (test-shape-artist-ui--sidebar-line-for sidebar "rect#"))
+        (with-current-buffer sidebar
+          (let ((sig (get-text-property (point) 'shape-artist-signature)))
+            (should (equal sig (list 'rectangle 0 0 3 2)))
+            (should (get-text-property (point) 'mouse-face))
+            (should (stringp (get-text-property (point) 'help-echo)))))
+        (should (test-shape-artist-ui--sidebar-line-for sidebar "root"))
+        (with-current-buffer sidebar
+          (should-not (get-text-property (point) 'shape-artist-signature)))))))
+
+(ert-deftest test-shape-artist-ui-sidebar-mode-binds-jump-keys ()
+  "The sidebar is a special-mode derivative with RET and click jumping."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (test-artist-with-ui-buffer "abc"
+      (with-current-buffer (shape-artist--get-or-create-sidebar-buffer)
+        (should (derived-mode-p 'special-mode))
+        (should (eq (key-binding (kbd "RET")) #'shape-artist-ui-sidebar-goto))
+        (should (eq (key-binding (kbd "<mouse-1>")) #'shape-artist-ui-sidebar-goto))))))
+
+(ert-deftest test-shape-artist-ui-sidebar-goto-selects-the-shape-for-editing ()
+  "RET on a sidebar row focuses that shape in the artist buffer in SHAPE-EDIT mode."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (cl-letf (((symbol-function 'pop-to-buffer) (lambda (b &rest _) (set-buffer b))))
+      (test-artist-with-ui-buffer "+--+  +---+\n|  |  |   |\n+--+  +---+"
+        (let ((artist (current-buffer))
+              (sidebar (shape-artist--get-or-create-sidebar-buffer)))
+          (setq shape-artist--mode 'move)
+          (shape-artist-shapes-parse)
+          (shape-artist--update-sidebar)
+          ;; Jump to the second (wider) rectangle.
+          (with-current-buffer sidebar
+            (goto-char (point-min))
+            (search-forward "rect#" nil t 2)
+            (beginning-of-line)
+            (shape-artist-ui-sidebar-goto))
+          (should (eq (current-buffer) artist))
+          (should (eq shape-artist--mode 'shape-edit))
+          (should (equal (shape-artist-shapes-signature shape-artist--locked-shape)
+                         '(rectangle 6 0 4 2)))
+          ;; Point lands inside the focused shape.
+          (should (equal (shape-artist--current-row-col) '(1 . 8))))))))
+
+(ert-deftest test-shape-artist-ui-sidebar-goto-off-a-shape-row-explains ()
+  "Pressing RET where no shape is listed says what to do instead of failing."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+      (let ((sidebar (shape-artist--get-or-create-sidebar-buffer)))
+        (shape-artist-shapes-parse)
+        (shape-artist--update-sidebar)
+        (with-current-buffer sidebar
+          (goto-char (point-min))
+          (let ((text (error-message-string
+                       (should-error (shape-artist-ui-sidebar-goto) :type 'user-error))))
+            (should (string-match-p "shape row" text))))))))
+
+(ert-deftest test-shape-artist-ui-sidebar-goto-reports-a-stale-row ()
+  "A row for a shape that has since changed asks for a refresh."
+  (test-shape-artist-ui--with-sidebar-cleanup
+    (cl-letf (((symbol-function 'pop-to-buffer) (lambda (b &rest _) (set-buffer b))))
+      (test-artist-with-ui-buffer "+--+\n|  |\n+--+"
+        (let ((sidebar (shape-artist--get-or-create-sidebar-buffer)))
+          (shape-artist-shapes-parse)
+          (shape-artist--update-sidebar)
+          ;; The diagram changes without the sidebar being refreshed.
+          (erase-buffer)
+          (insert "    \n    \n    ")
+          (shape-artist-shapes-parse)
+          (with-current-buffer sidebar
+            (test-shape-artist-ui--sidebar-line-for sidebar "rect#")
+            (let ((text (error-message-string
+                         (should-error (shape-artist-ui-sidebar-goto)
+                                       :type 'user-error))))
+              (should (string-match-p "no longer" text))
+              (should (string-match-p "refresh" text)))))))))
 
 ;;; test-shape-artist-ui.el ends here
