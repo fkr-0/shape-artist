@@ -92,7 +92,7 @@
     (:id undo
      :title "Undo a change"
      :instruction "Enter DRAW mode with {move:shape-artist-enter-draw}, then press {draw:shape-artist-undo} to undo the last edit."
-     :hint "The standard Emacs undo (M-x undo) counts as well.  {draw:shape-artist-cancel-and-exit} leaves DRAW mode."))
+     :hint "The ordinary Emacs undo command counts as well.  {draw:shape-artist-cancel-and-exit} leaves DRAW mode."))
   "The tutorial tasks, in order.
 
 Each task is a plist with :id, :title, :instruction and :hint.  Instruction
@@ -590,9 +590,15 @@ record the undo instead."
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert (shape-artist-tutorial--blank-canvas)))
-    (shape-artist-core-mode 1)
-    ;; `picture-mode' (run by the minor mode) resets buffer-local state, so all
-    ;; tutorial setup happens after it.
+    ;; Enabling an enabled `shape-artist-core-mode' again would make
+    ;; `picture-mode' fail, so only enable it when it is off.  `picture-mode'
+    ;; resets buffer-local state, so all tutorial setup happens after it.
+    (unless shape-artist-core-mode
+      (when (eq major-mode 'picture-mode)
+        (fundamental-mode))
+      (shape-artist-core-mode 1))
+    (shape-artist--clear-preview-state)
+    (shape-artist-enter-move)
     (setq-local shape-artist--update-sidebar-fn nil)
     (setq shape-artist-tutorial--guide-buffer guide
           shape-artist-tutorial--commands nil
