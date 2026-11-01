@@ -28,11 +28,12 @@ report="$root/coverage/lcov.info"
 mkdir -p coverage
 rm -f "$report"
 
-# Let Eldev install/resolve dependencies (undercover via its plugin, Evil via the
-# test set), then run plain Emacs with those packages on the load path.  We do not
-# use `eldev exec'"'"' or `eldev test'"'"' to drive the run: `exec'"'"' pre-requires the
-# project (uninstrumented) and neither reliably exposes the undercover package.
-eldev --setup "(eldev-use-plugin 'undercover)" prepare test >/dev/null
+# Let Eldev install and resolve dependencies (Evil via the test set, undercover
+# via the coverage set declared in the Eldev file), then run plain Emacs with
+# those packages on the load path.  Eldev does not drive the run itself:
+# `eldev exec' pre-requires the project, uninstrumented, and the Eldev
+# undercover plugin writes no report.
+eldev prepare test coverage >/dev/null
 
 emacs_version="$(emacs --batch --eval '(princ (format "%d.%d" emacs-major-version emacs-minor-version))')"
 load_args=()

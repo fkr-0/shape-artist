@@ -6,6 +6,9 @@
 
 (eldev-add-extra-dependencies 'test 'evil)
 
+;; Used only by scripts/coverage.sh (`eldev prepare test coverage').
+(eldev-add-extra-dependencies 'coverage 'undercover)
+
 (eldev-add-loading-roots 'test "tests")
 
 ;; `trunk/' contains untracked prototype/reference modules imported from the
